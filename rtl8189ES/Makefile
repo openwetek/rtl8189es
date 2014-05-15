@@ -1331,10 +1331,8 @@ export CONFIG_RTL8189ES = m
 
 all: modules
 
-ANDROID_PRODUCT_OUT = ../../../../../../out/target/product/k200
 modules:
 	$(MAKE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) -C $(KSRC) M=$(shell pwd)  modules
-#	$(MAKE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) -C $(ANDROID_PRODUCT_OUT)/obj/KERNEL_OBJ/ M=$(shell pwd)  modules
 
 strip:
 	$(CROSS_COMPILE)strip $(MODULE_NAME).ko --strip-unneeded

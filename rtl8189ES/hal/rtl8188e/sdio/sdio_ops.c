@@ -1830,28 +1830,6 @@ void sd_int_hdl(PADAPTER padapter)
 	if (pHalData->sdio_hisr & pHalData->sdio_himr)
 	{
 		u32 v32;
-		u8 v8;
-		
-		// GPIO test
-		v8 = rtw_read8(padapter, 0x46);
-		v8 |= BIT(7);
-		rtw_write8(padapter, 0x46, v8);
-
-		v8 = rtw_read8(padapter, 0x45);
-		#if 0
-		if((v8&BIT(7))==0)
-		{
-		    v8 |= BIT(7);
-		}
-		else
-		{
-		    v8 &= ~BIT(7);
-		}
-		#else
-		v8 |= BIT(7);
-		#endif
-		
-		rtw_write8(padapter, 0x45, v8);
 
 		pHalData->sdio_hisr &= pHalData->sdio_himr;
 
@@ -1863,52 +1841,15 @@ void sd_int_hdl(PADAPTER padapter)
 		}
 
 		sd_int_dpc(padapter);
-		v8 = rtw_read8(padapter, 0x45);
-		v8 &= ~BIT(7);
-		rtw_write8(padapter, 0x45, v8);
 		
 	} 
 	else 
 	{
-		u32 v32;
-		u8  v8;
 		RT_TRACE(_module_hci_ops_c_, _drv_err_,
 				("%s: HISR(0x%08x) and HIMR(0x%08x) not match!\n",
 				__FUNCTION__, pHalData->sdio_hisr, pHalData->sdio_himr));
-		DBG_871X("######GPIO test######\n");
-		// GPIO test
-		v8 = rtw_read8(padapter, 0x46);
-		v8 |= BIT(7);
-		rtw_write8(padapter, 0x46, v8);
-
-		v8 = rtw_read8(padapter, 0x45);
-		#if 0
-		if((v8&BIT(7))==0)
-		{
-		    v8 |= BIT(7);
-		}
-		else
-		{
-		    v8 &= ~BIT(7);
-		}
-		#else
-		v8 |= BIT(7);
-		#endif
-		
-		rtw_write8(padapter, 0x45, v8);
-
-		//v8 = rtw_read8(padapter, 0x45);
-		//v8 &= 0x7f;
-		//rtw_write8(padapter, 0x45, v8);
-
-		DBG_871X("######Clear HISR######\n");
-		// clear HISR
-		v32 = pHalData->sdio_hisr & MASK_SDIO_HISR_CLEAR;
-		if (v32) {
-			v32 = cpu_to_le32(v32);
-			_sdio_local_write(padapter, SDIO_REG_HISR, 4, (u8*)&v32);
-		}
 	}
+	
 }
 
 //
