@@ -32,8 +32,8 @@ int platform_wifi_power_on(void)
 	int ret = 0;
 
 	printk("######%s: \n",__func__);
-	extern_wifi_set_enable(0);
-	msleep(500);
+//	extern_wifi_set_enable(0);
+//	msleep(500);
 	extern_wifi_set_enable(1);
 	msleep(500);
 	sdio_reinit();
@@ -42,6 +42,6 @@ int platform_wifi_power_on(void)
 
 void platform_wifi_power_off(void)
 {
-	extern_wifi_set_enable(0);
+//	extern_wifi_set_enable(0);
 }
 #endif // !CONFIG_PLATFORM_OPS
