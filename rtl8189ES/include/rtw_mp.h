@@ -681,7 +681,7 @@ typedef enum	_MPT_TXPWR_DEF{
 #elif defined(CONFIG_RTL8723B)
 	#define 	REG_RF_BB_GAIN_OFFSET	0x7f
 	#define 	RF_GAIN_OFFSET_MASK 	0xfffff
-#else
+#elif defined(CONFIG_RTL8188E)
 	#define 	REG_RF_BB_GAIN_OFFSET	0x55
 	#define 	RF_GAIN_OFFSET_MASK 	0xfffff
 #endif	//CONFIG_RTL8723A

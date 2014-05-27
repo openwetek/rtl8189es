@@ -84,9 +84,7 @@
 	#include <linux/earlysuspend.h>
 #endif //CONFIG_HAS_EARLYSUSPEND
 
-#ifdef CONFIG_EFUSE_CONFIG_FILE
 	#include <linux/fs.h>
-#endif //CONFIG_EFUSE_CONFIG_FILE
 
 #ifdef CONFIG_USB_HCI
 	#include <linux/usb.h>

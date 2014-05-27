@@ -350,6 +350,19 @@ static int rtw_ieee80211_channel_to_frequency(int chan, int band)
 	}
 }
 
+static u64 rtw_get_systime_us(void)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39))
+	struct timespec ts;
+	get_monotonic_boottime(&ts);
+	return ((u64)ts.tv_sec*1000000) + ts.tv_nsec / 1000;
+#else
+	struct timeval tv;
+	do_gettimeofday(&tv);
+	return ((u64)tv.tv_sec*1000000) + tv.tv_usec;
+#endif
+}
+
 #define MAX_BSSINFO_LEN 1000
 struct cfg80211_bss *rtw_cfg80211_inform_bss(_adapter *padapter, struct wlan_network *pnetwork)
 {
@@ -478,7 +491,12 @@ struct cfg80211_bss *rtw_cfg80211_inform_bss(_adapter *padapter, struct wlan_net
 		freq = rtw_ieee80211_channel_to_frequency(channel, IEEE80211_BAND_2GHZ);
 	else
 		freq = rtw_ieee80211_channel_to_frequency(channel, IEEE80211_BAND_5GHZ);
-	
+
+	if (0)
+		notify_timestamp = le64_to_cpu(*(u64*)rtw_get_timestampe_from_ie(pnetwork->network.IEs));
+	else
+		notify_timestamp = rtw_get_systime_us();
+
 	notify_channel = ieee80211_get_channel(wiphy, freq);
 
 	//rtw_get_timestampe_from_ie()
@@ -505,7 +523,7 @@ struct cfg80211_bss *rtw_cfg80211_inform_bss(_adapter *padapter, struct wlan_net
 	DBG_8192C("Capability: %X\n", notify_capability);
 	DBG_8192C("Beacon interval: %d\n", notify_interval);
 	DBG_8192C("Signal: %d\n", notify_signal);
-	DBG_8192C("notify_timestamp: %#018llx\n", notify_timestamp);
+	DBG_8192C("notify_timestamp: %llu\n", notify_timestamp);
 	#endif
 
 	pbuf = buf;
@@ -535,6 +553,8 @@ struct cfg80211_bss *rtw_cfg80211_inform_bss(_adapter *padapter, struct wlan_net
 	_rtw_memcpy(pbuf, pnetwork->network.IEs, pnetwork->network.IELength);
 	len += pnetwork->network.IELength;
 
+	*((u64*)pbuf) = cpu_to_le64(notify_timestamp);
+
 	//#ifdef CONFIG_P2P
 	//if(rtw_get_p2p_ie(pnetwork->network.IEs+12, pnetwork->network.IELength-12, NULL, NULL))
 	//{
@@ -542,7 +562,6 @@ struct cfg80211_bss *rtw_cfg80211_inform_bss(_adapter *padapter, struct wlan_net
 	//}
 	//#endif
 	
-
 #if 1	
 	bss = cfg80211_inform_bss_frame(wiphy, notify_channel, (struct ieee80211_mgmt *)buf,
 		len, notify_signal, GFP_ATOMIC);
@@ -626,6 +645,12 @@ int rtw_cfg80211_check_bss(_adapter *padapter)
 			pnetwork->MacAddress, pnetwork->Ssid.Ssid,
 			pnetwork->Ssid.SsidLength,
 			WLAN_CAPABILITY_ESS, WLAN_CAPABILITY_ESS);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)
+	cfg80211_put_bss(padapter->rtw_wdev->wiphy, bss);
+#else
+	cfg80211_put_bss(bss);
+#endif
 
 	return 	(bss!=NULL);
 }
@@ -1274,7 +1299,7 @@ _func_enter_;
 					//DEBUG_ERR((" param->u.crypt.key_len=%d\n",param->u.crypt.key_len));
 					DBG_871X(" ~~~~set sta key:unicastkey\n");
 					
-					rtw_setstakey_cmd(padapter, (unsigned char *)psta, _TRUE, _TRUE);
+					rtw_setstakey_cmd(padapter, psta, _TRUE, _TRUE);
 				}
 				else//group key
 				{
@@ -1288,14 +1313,8 @@ _func_enter_;
 						DBG_871X(" ~~~~set sta key:groupkey\n");
 	
 						padapter->securitypriv.dot118021XGrpKeyid = param->u.crypt.idx;
-#ifdef CONFIG_CONCURRENT_MODE 
-						if (padapter->adapter_type == PRIMARY_ADAPTER)
-							rtw_set_key(padapter,&padapter->securitypriv,param->u.crypt.idx, 1, _TRUE);
-						else
-							DBG_871X_LEVEL(_drv_always_, "second interface do not set cam.\n");
-#else
+
 						rtw_set_key(padapter,&padapter->securitypriv,param->u.crypt.idx, 1, _TRUE);
-#endif
 					}
 #ifdef CONFIG_IEEE80211W
 					else if(strcmp(param->u.crypt.alg, "BIP") == 0)

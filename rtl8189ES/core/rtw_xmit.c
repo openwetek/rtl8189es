@@ -614,8 +614,10 @@ static void update_attrib_vcs_info(_adapter *padapter, struct xmit_frame *pxmitf
 	}
 }
 
-static void update_attrib_phy_info(struct pkt_attrib *pattrib, struct sta_info *psta)
+static void update_attrib_phy_info(_adapter *padapter, struct pkt_attrib *pattrib, struct sta_info *psta)
 {
+	struct mlme_ext_priv *mlmeext = &padapter->mlmeextpriv;
+	
 	pattrib->rtsen = psta->rtsen;
 	pattrib->cts2self = psta->cts2self;
 	
@@ -628,7 +630,10 @@ static void update_attrib_phy_info(struct pkt_attrib *pattrib, struct sta_info *
 	
 	pattrib->raid = psta->raid;
 
-	pattrib->bwmode = psta->bw_mode;
+	if (mlmeext->cur_bwmode < psta->bw_mode)
+		pattrib->bwmode = mlmeext->cur_bwmode;
+	else
+		pattrib->bwmode = psta->bw_mode;
 
 	pattrib->sgi = query_ra_short_GI(psta);
 
@@ -792,7 +797,7 @@ static s32 update_attrib_sec_info(_adapter *padapter, struct pkt_attrib *pattrib
 		RT_TRACE(_module_rtl871x_xmit_c_,_drv_info_,("update_attrib: bswenc=_FALSE\n"));
 	}
 
-#ifdef CONFIG_CONCURRENT_MODE
+#if defined(CONFIG_CONCURRENT_MODE) && !defined(DYNAMIC_CAMID_ALLOC)
 	if((pattrib->encrypt && bmcast) || (pattrib->encrypt ==_WEP40_) || (pattrib->encrypt ==_WEP104_))
 	{
 		pattrib->bswenc = _TRUE;//force using sw enc.
@@ -941,7 +946,7 @@ s32 update_tdls_attrib(_adapter *padapter, struct pkt_attrib *pattrib)
 		goto exit;
 	}
 
-	update_attrib_phy_info(pattrib, psta);
+	update_attrib_phy_info(padapter, pattrib, psta);
 
 
 exit:
@@ -1115,7 +1120,7 @@ static s32 update_attrib(_adapter *padapter, _pkt *pkt, struct pkt_attrib *pattr
 		goto exit;
 	}
 
-	update_attrib_phy_info(pattrib, psta);
+	update_attrib_phy_info(padapter, pattrib, psta);
 
 	//DBG_8192C("%s ==> mac_id(%d)\n",__FUNCTION__,pattrib->mac_id );
 	

@@ -321,5 +321,11 @@ void rtw_get_raw_rssi_info(void *sel, _adapter *padapter);
 void rtw_store_phy_info(_adapter *padapter, union recv_frame *prframe);
 void rtw_dump_raw_rssi_info(_adapter *padapter);
 #endif
+
+
+#ifdef CONFIG_RF_GAIN_OFFSET
+void rtw_bb_rf_gain_offset(_adapter *padapter);
+#endif //CONFIG_RF_GAIN_OFFSET
+
 #endif //__HAL_COMMON_H__
 

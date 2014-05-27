@@ -24,6 +24,7 @@
 #include "hal_com_h2c.h"
 
 #define CONFIG_H2C_EF
+//#define WOW_DEBUG
 
 #define RTL88E_MAX_H2C_BOX_NUMS	4
 #define RTL88E_MAX_CMD_LEN	7
@@ -302,7 +303,7 @@ _func_enter_;
 			break;
 		case PS_MODE_DTIM:
 			RLBM = 2;
-			H2CSetPwrMode.AwakeInterval = 3; //DTIM = 2
+			H2CSetPwrMode.AwakeInterval = 2; //DTIM = 1
 			H2CSetPwrMode.Mode = 1;
 			break;
 		case PS_MODE_UAPSD_WMM:
@@ -844,6 +845,7 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	struct xmit_priv	*pxmitpriv;
 	struct mlme_ext_priv	*pmlmeext;
 	struct mlme_ext_info	*pmlmeinfo;
+	struct pwrctrl_priv *pwrctl;
 	u32	BeaconLength, ProbeRspLength, PSPollLength;
 	u32	NullDataLength, QosNullLength, BTQosNullLength;
 	u8	*ReservedPagePacket;
@@ -857,6 +859,8 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	struct security_priv *psecuritypriv = &padapter->securitypriv; //added by xx
 	u8 currentip[4];
 	u8 cur_dot11txpn[8];
+
+	pwrctl = adapter_to_pwrctl(padapter);
 #endif
 
 	DBG_871X(FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(padapter));
@@ -902,7 +906,9 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 	//3 (2) ps-poll *1 page
 	RsvdPageLoc.LocPsPoll = PageNum;
 	ConstructPSPoll(padapter, &ReservedPagePacket[BufIndex], &PSPollLength);
-	rtl8188e_fill_fake_txdesc(padapter, &ReservedPagePacket[BufIndex-TxDescLen], PSPollLength, _TRUE, _FALSE);
+	rtl8188e_fill_fake_txdesc(padapter,
+			&ReservedPagePacket[BufIndex-TxDescLen],
+			PSPollLength, _TRUE, _FALSE, _FALSE);
 
 	PageNeed = (u8)PageNum_128(TxDescLen + PSPollLength);
 	PageNum += PageNeed;
@@ -917,7 +923,10 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 		&NullDataLength,
 		get_my_bssid(&pmlmeinfo->network),
 		_FALSE, 0, 0, _FALSE);
-	rtl8188e_fill_fake_txdesc(padapter, &ReservedPagePacket[BufIndex-TxDescLen], NullDataLength, _FALSE, _FALSE);
+
+	rtl8188e_fill_fake_txdesc(padapter,
+			&ReservedPagePacket[BufIndex-TxDescLen],
+			NullDataLength, _FALSE, _FALSE, _FALSE);
 
 	PageNeed = (u8)PageNum_128(TxDescLen + NullDataLength);
 	PageNum += PageNeed;
@@ -932,7 +941,10 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 		&QosNullLength,
 		get_my_bssid(&pmlmeinfo->network),
 		_TRUE, 0, 0, _FALSE);
-	rtl8188e_fill_fake_txdesc(padapter, &ReservedPagePacket[BufIndex-TxDescLen], QosNullLength, _FALSE, _FALSE);
+
+	rtl8188e_fill_fake_txdesc(padapter,
+			&ReservedPagePacket[BufIndex-TxDescLen],
+			QosNullLength, _FALSE, _FALSE, _FALSE);
 
 	PageNeed = (u8)PageNum_128(TxDescLen + QosNullLength);
 	PageNum += PageNeed;
@@ -954,18 +966,26 @@ static void SetFwRsvdPagePkt(PADAPTER padapter, BOOLEAN bDLFinished)
 */
 
 #ifdef CONFIG_WOWLAN
-	//3(7) ARP
-	rtw_get_current_ip_address(padapter, currentip);
-	RsvdPageLoc.LocArpRsp = PageNum;
-	ConstructARPResponse(
-		padapter,
-		&ReservedPagePacket[BufIndex],
-		&ARPLegnth,
-		currentip
-		);
-	rtl8188e_fill_fake_txdesc(padapter, &ReservedPagePacket[BufIndex-TxDescLen], ARPLegnth, _FALSE, _FALSE);
+	if (pwrctl->wowlan_mode == _TRUE) {
+		//3(7) ARP
+		rtw_get_current_ip_address(padapter, currentip);
+		RsvdPageLoc.LocArpRsp = PageNum;
 
-	PageNeed = (u8)PageNum_128(TxDescLen + ARPLegnth);
+		ConstructARPResponse(
+			padapter,
+			&ReservedPagePacket[BufIndex],
+			&ARPLegnth,
+			currentip);
+
+		rtl8188e_fill_fake_txdesc(padapter,
+				&ReservedPagePacket[BufIndex-TxDescLen],
+				ARPLegnth, _FALSE, _FALSE, _TRUE);
+
+		PageNeed = (u8)PageNum_128(TxDescLen + ARPLegnth);
+	} else {
+		 PageNeed = (u8)PageNum_128(128);
+	}
+
 	PageNum += PageNeed;
 
 	BufIndex += PageNeed * PageSize;
@@ -1365,6 +1385,229 @@ void rtl8188es_set_output_gpio(_adapter* padapter, u8 index, u8 outputval)
 }
 #endif //CONFIG_GPIO_WAKEUP
 
+void rtl8188es_set_global_info_cmd(_adapter* padapter, u8 enable)
+{
+	SETAOAC_GLOBAL_INFO     paoac_global_info_parm;
+	struct security_priv *psecpriv = &padapter->securitypriv;
+	// Initial parameter
+	paoac_global_info_parm.pairwiseEncAlg = 0;
+	paoac_global_info_parm.groupEncAlg = 0;
+
+	DBG_871X("+%s+\n", __func__);
+	if (enable) {
+		//Configure STA security information for GTK rekey wakeup event.
+		paoac_global_info_parm.pairwiseEncAlg =
+			psecpriv->dot11PrivacyAlgrthm;
+		paoac_global_info_parm.groupEncAlg =
+			psecpriv->dot118021XGrpPrivacy;
+	}
+
+	FillH2CCmd_88E(padapter, H2C_COM_AOAC_GLOBAL_INFO, 2, (u8 *)&paoac_global_info_parm);
+	rtw_msleep_os(5);
+#ifdef WOW_DEBUG
+	rtw_msleep_os(100);
+	DBG_871X("after H2C 0x%02x, 0x284: 0x%08x\n",
+			H2C_COM_AOAC_GLOBAL_INFO, rtw_read32(padapter, 0x284));
+	DBG_871X("after H2C 0x%02x, 0x11c: 0x%08x\n",
+			H2C_COM_AOAC_GLOBAL_INFO, rtw_read32(padapter, 0x11c));
+	DBG_871X("after H2C 0x%02x, 0x690: 0x%08x\n",
+			H2C_COM_AOAC_GLOBAL_INFO, rtw_read32(padapter, 0x690));
+	DBG_871X("TX_RPT-2:0x%02x\n", rtw_read8(padapter, REG_TX_RPT_CTRL));
+#endif
+}
+
+void rtl8188es_set_keep_alive_cmd(_adapter* padapter, u8 enable)
+{
+	SETWOWLAN_PARM	pwowlan_parm;
+	// Initial parameter
+	pwowlan_parm.mode =0;
+	pwowlan_parm.gpio_index=0;
+	pwowlan_parm.gpio_duration=0;
+	pwowlan_parm.second_mode =0;
+	pwowlan_parm.reserve=0;
+
+	DBG_871X("+%s+\n", __func__);
+
+	if (enable) {
+		//keep alive period = 10 * 10 BCN interval
+		pwowlan_parm.mode = FW_WOWLAN_KEEP_ALIVE_EN | FW_ADOPT_USER | FW_WOWLAN_KEEP_ALIVE_PKT_TYPE;
+		pwowlan_parm.gpio_index = 15;
+	}
+
+	FillH2CCmd_88E(padapter, H2C_COM_KEEP_ALIVE, 2, (u8 *)&pwowlan_parm);
+	rtw_msleep_os(5);
+#ifdef WOW_DEBUG
+	rtw_msleep_os(100);
+	DBG_871X("after H2C 0x%02x, 0x284: 0x%08x\n",
+			H2C_COM_KEEP_ALIVE, rtw_read32(padapter, 0x284));
+	DBG_871X("after H2C 0x%02x, 0x11c: 0x%08x\n",
+			H2C_COM_KEEP_ALIVE, rtw_read32(padapter, 0x11c));
+	DBG_871X("after H2C 0x%02x, 0x690: 0x%08x\n",
+			H2C_COM_KEEP_ALIVE, rtw_read32(padapter, 0x690));
+	DBG_871X("TX_RPT-2:0x%02x\n", rtw_read8(padapter, REG_TX_RPT_CTRL));
+#endif
+
+}
+
+void rtl8188es_set_disconnect_decision_cmd(_adapter* padapter, u8 enable)
+{
+	SETWOWLAN_PARM	pwowlan_parm;
+	// Initial parameter
+	pwowlan_parm.mode =0;
+	pwowlan_parm.gpio_index=0;
+	pwowlan_parm.gpio_duration=0;
+	pwowlan_parm.second_mode =0;
+	pwowlan_parm.reserve=0;
+
+	DBG_871X("+%s+\n", __func__);
+
+	if (enable) {
+		//disconnect decision
+		pwowlan_parm.mode =1;
+		pwowlan_parm.gpio_index=0;
+		pwowlan_parm.gpio_duration=0;
+	}
+
+	FillH2CCmd_88E(padapter, H2C_COM_DISCNT_DECISION, 3, (u8 *)&pwowlan_parm);
+	rtw_msleep_os(5);
+#ifdef WOW_DEBUG
+	rtw_msleep_os(100);
+	DBG_871X("after H2C 0x%02x, 0x284: 0x%08x\n",
+			H2C_COM_DISCNT_DECISION, rtw_read32(padapter, 0x284));
+	DBG_871X("after H2C 0x%02x, 0x11c: 0x%08x\n",
+			H2C_COM_DISCNT_DECISION, rtw_read32(padapter, 0x11c));
+	DBG_871X("after H2C 0x%02x, 0x690: 0x%08x\n",
+			H2C_COM_DISCNT_DECISION, rtw_read32(padapter, 0x690));
+	DBG_871X("TX_RPT-2:0x%02x\n", rtw_read8(padapter, REG_TX_RPT_CTRL));
+#endif
+}
+
+void rtl8188es_set_wowlan_ctrl_cmd(_adapter* padapter, u8 enable)
+{
+	SETWOWLAN_PARM	pwowlan_parm;
+	struct pwrctrl_priv	*pwrpriv = adapter_to_pwrctl(padapter);
+	struct security_priv *psecpriv = &padapter->securitypriv;
+#ifdef CONFIG_GPIO_WAKEUP
+	u8	gpio_wake_pin = WAKEUP_GPIO_IDX;
+	u8	gpio_high_active = 0;	//default low active
+#endif
+	DBG_871X("+%s+\n", __func__);
+	// Initial parameter
+	pwowlan_parm.mode =0;
+	pwowlan_parm.gpio_index=0;
+	pwowlan_parm.gpio_duration=0;
+	pwowlan_parm.second_mode =0;
+	pwowlan_parm.reserve=0;
+
+	if (enable) {
+	//WOWLan CTRL
+		pwowlan_parm.mode = FW_WOWLAN_FUN_EN;
+		pwrpriv->wowlan_magic =_TRUE;
+		if (psecpriv->dot11PrivacyAlgrthm == _WEP40_ || psecpriv->dot11PrivacyAlgrthm == _WEP104_)
+			pwrpriv->wowlan_unicast =_TRUE;
+
+		if (pwrpriv->wowlan_pattern ==_TRUE) {
+			pwowlan_parm.mode |= FW_WOWLAN_PATTERN_MATCH;
+			DBG_871X_LEVEL(_drv_info_, "%s 2.pwowlan_parm.mode=0x%x \n",
+					__FUNCTION__,pwowlan_parm.mode );
+		}
+
+		if(pwrpriv->wowlan_magic ==_TRUE){
+			pwowlan_parm.mode |=FW_WOWLAN_MAGIC_PKT;
+			DBG_871X_LEVEL(_drv_info_, "%s 3.pwowlan_parm.mode=0x%x \n",
+					__FUNCTION__,pwowlan_parm.mode );
+		}
+
+		if(pwrpriv->wowlan_unicast ==_TRUE){
+			pwowlan_parm.mode |=FW_WOWLAN_UNICAST;
+			DBG_871X_LEVEL(_drv_info_, "%s 4.pwowlan_parm.mode=0x%x \n",
+					__FUNCTION__,pwowlan_parm.mode );
+		}
+
+		pwowlan_parm.mode |=FW_WOWLAN_ALL_PKT_DROP;
+		pwowlan_parm.mode |=FW_WOWLAN_REKEY_WAKEUP;
+		pwowlan_parm.mode |=FW_WOWLAN_DEAUTH_WAKEUP;
+
+		//DataPinWakeUp
+#ifdef CONFIG_USB_HCI
+		pwowlan_parm.gpio_index=0x0;
+#endif //CONFIG_USB_HCI
+
+#ifdef CONFIG_SDIO_HCI
+		pwowlan_parm.gpio_index = 0x80;
+#endif //CONFIG_SDIO_HCI
+
+#ifdef CONFIG_GPIO_WAKEUP
+		pwowlan_parm.gpio_index = gpio_wake_pin;
+
+		//WOWLAN_GPIO_ACTIVE means GPIO high active
+		//pwowlan_parm.mode |=FW_WOWLAN_GPIO_ACTIVE;
+		if (gpio_high_active)
+			pwowlan_parm.mode |=FW_WOWLAN_GPIO_ACTIVE;
+#endif //CONFIG_GPIO_WAKEUP
+	}
+
+	DBG_871X("before H2C 0x%02x, 0x284: 0x%08x\n",
+			H2C_COM_WWLAN, rtw_read32(padapter, 0x284));
+	DBG_871X("before H2C 0x%02x, 0x11c: 0x%08x\n",
+			H2C_COM_WWLAN, rtw_read32(padapter, 0x11c));
+	DBG_871X("before H2C 0x%02x, 0x690: 0x%08x\n",
+			H2C_COM_WWLAN, rtw_read32(padapter, 0x690));
+	FillH2CCmd_88E(padapter, H2C_COM_WWLAN, 2, (u8 *)&pwowlan_parm);
+	rtw_msleep_os(5);
+#ifdef WOW_DEBUG
+	rtw_msleep_os(100);
+	DBG_871X("after H2C 0x%02x, 0x284: 0x%08x\n",
+			H2C_COM_WWLAN, rtw_read32(padapter, 0x284));
+	DBG_871X("after H2C 0x%02x, 0x11c: 0x%08x\n",
+			H2C_COM_WWLAN, rtw_read32(padapter, 0x11c));
+	DBG_871X("after H2C 0x%02x, 0x690: 0x%08x\n",
+			H2C_COM_WWLAN, rtw_read32(padapter, 0x690));
+	DBG_871X("TX_RPT-2:0x%02x\n", rtw_read8(padapter, REG_TX_RPT_CTRL));
+#endif
+}
+
+void rtl8188es_set_remote_wake_ctrl_cmd(_adapter* padapter, u8 enable)
+{
+	SETWOWLAN_PARM	pwowlan_parm;
+	struct security_priv *psecpriv = &padapter->securitypriv;
+
+	DBG_871X("+%s+\n", __func__);
+	// Initial parameter
+	pwowlan_parm.mode =0;
+	pwowlan_parm.gpio_index=0;
+	pwowlan_parm.gpio_duration=0;
+	pwowlan_parm.second_mode =0;
+	pwowlan_parm.reserve=0;
+
+	if (enable) {
+	//enable Remote wake ctrl
+		pwowlan_parm.mode = FW_REMOTE_WAKE_CTRL_EN | FW_WOW_FW_UNICAST_EN | FW_ARP_EN;
+		if (psecpriv->dot11PrivacyAlgrthm == _AES_ || psecpriv->dot11PrivacyAlgrthm == _NO_PRIVACY_)
+		{
+			pwowlan_parm.gpio_duration=0;
+		} else {
+			pwowlan_parm.gpio_duration=1;
+		}
+
+		pwowlan_parm.gpio_index=0;
+	}
+
+	FillH2CCmd_88E(padapter, H2C_COM_REMOTE_WAKE_CTRL, 3, (u8 *)&pwowlan_parm);
+	rtw_msleep_os(5);
+#ifdef WOW_DEBUG
+	rtw_msleep_os(100);
+
+	DBG_871X("after H2C 0x%02x, 0x284: 0x%08x\n",
+			H2C_COM_REMOTE_WAKE_CTRL, rtw_read32(padapter, 0x284));
+	DBG_871X("after H2C 0x%02x, 0x11c: 0x%08x\n",
+			H2C_COM_REMOTE_WAKE_CTRL, rtw_read32(padapter, 0x11c));
+	DBG_871X("after H2C 0x%02x, 0x690: 0x%08x\n",
+			H2C_COM_REMOTE_WAKE_CTRL, rtw_read32(padapter, 0x690));
+	DBG_871X("TX_RPT-2:0x%02x\n", rtw_read8(padapter, REG_TX_RPT_CTRL));
+#endif
+}
+
 void rtl8188es_set_wowlan_cmd(_adapter* padapter, u8 enable)
 {
 	u8		res=_SUCCESS;
@@ -1375,7 +1618,7 @@ void rtl8188es_set_wowlan_cmd(_adapter* padapter, u8 enable)
 	struct pwrctrl_priv	*pwrpriv = adapter_to_pwrctl(padapter);
 	struct security_priv *psecpriv = &padapter->securitypriv;
 #ifdef CONFIG_GPIO_WAKEUP
-	u8		gpio_wake_pin = 7;
+	u8		gpio_wake_pin = WAKEUP_GPIO_IDX;
 	u8		gpio_high_active = 0;	//default low active
 #endif
 
@@ -1429,11 +1672,18 @@ _func_enter_;
 				pwowlan_parm.mode |=FW_WOWLAN_GPIO_ACTIVE;
 #endif //CONFIG_GPIO_WAKEUP
 
+			DBG_871X("before H2C 0x80, 0x284: 0x%08x\n", rtw_read32(padapter, 0x284));
+			DBG_871X("before H2C 0x80, 0x11c: 0x%08x\n", rtw_read32(padapter, 0x11c));
+			DBG_871X("before H2C 0x80, 0x690: 0x%08x\n", rtw_read32(padapter, 0x690));
+
 			DBG_871X_LEVEL(_drv_info_, "%s 5.pwowlan_parm.mode=0x%x \n",__FUNCTION__,pwowlan_parm.mode);
 			DBG_871X_LEVEL(_drv_info_, "%s 6.pwowlan_parm.index=0x%x \n",__FUNCTION__,pwowlan_parm.gpio_index);
 			res = FillH2CCmd_88E(padapter, H2C_COM_WWLAN, 2, (u8 *)&pwowlan_parm);
 
-			rtw_msleep_os(2);
+			rtw_msleep_os(100);
+			DBG_871X("after H2C 0x80, 0x284: 0x%08x\n", rtw_read32(padapter, 0x284));
+			DBG_871X("after H2C 0x80, 0x11c: 0x%08x\n", rtw_read32(padapter, 0x11c));
+			DBG_871X("after H2C 0x80, 0x690: 0x%08x\n", rtw_read32(padapter, 0x690));
 
 			//disconnect decision
 			pwowlan_parm.mode =1;
@@ -1443,7 +1693,7 @@ _func_enter_;
 
 			//keep alive period = 10 * 10 BCN interval
 			pwowlan_parm.mode = FW_WOWLAN_KEEP_ALIVE_EN | FW_ADOPT_USER | FW_WOWLAN_KEEP_ALIVE_PKT_TYPE;
-			pwowlan_parm.gpio_index = 5;
+			pwowlan_parm.gpio_index = 15;
 			res = FillH2CCmd_88E(padapter, H2C_COM_KEEP_ALIVE, 2, (u8 *)&pwowlan_parm);
 
 			rtw_msleep_os(2);
@@ -1459,11 +1709,12 @@ _func_enter_;
 			pwowlan_parm.mode = FW_REMOTE_WAKE_CTRL_EN | FW_WOW_FW_UNICAST_EN | FW_ARP_EN;
 			if (psecpriv->dot11PrivacyAlgrthm == _AES_ || psecpriv->dot11PrivacyAlgrthm == _NO_PRIVACY_)
 			{
-				pwowlan_parm.gpio_index=0;
+				pwowlan_parm.gpio_duration=0;
 			} else {
-				pwowlan_parm.gpio_index=1;
+				pwowlan_parm.gpio_duration=1;
 			}
-			pwowlan_parm.gpio_duration=0;
+
+			pwowlan_parm.gpio_index=0;
 
 			res = FillH2CCmd_88E(padapter, H2C_COM_REMOTE_WAKE_CTRL, 3, (u8 *)&pwowlan_parm);
 		} else {

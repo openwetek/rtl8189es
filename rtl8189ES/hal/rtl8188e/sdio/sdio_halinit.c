@@ -257,6 +257,65 @@ static u8 _CardEnable(PADAPTER padapter)
 	
 }
 
+#ifdef CONFIG_GPIO_WAKEUP
+//we set it high under init and fw will
+//give us Low Pulse when host wake up
+void HostWakeUpGpioClear(PADAPTER Adapter)
+{
+	u32	value32;
+
+	value32 = rtw_read32(Adapter, REG_GPIO_PIN_CTRL_2);
+
+	//set GPIO 12 1
+	value32 |= BIT(12);//4+8
+	//GPIO 12 out put
+	value32 |= BIT(20);//4+16
+
+	rtw_write32(Adapter, REG_GPIO_PIN_CTRL_2, value32);
+} //HostWakeUpGpioClear
+
+void HalSetOutPutGPIO(PADAPTER padapter, u8 index, u8 OutPutValue)
+{
+	if ( index <= 7 ) {
+		/* config GPIO mode */
+		rtw_write8(padapter, REG_GPIO_PIN_CTRL + 3, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 3) & ~BIT(index) );
+
+		/* config GPIO Sel */
+		/* 0: input */
+		/* 1: output */
+		rtw_write8(padapter, REG_GPIO_PIN_CTRL + 2, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 2) | BIT(index));
+
+		/* set output value */
+		if ( OutPutValue ) {
+			rtw_write8(padapter, REG_GPIO_PIN_CTRL + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 1) | BIT(index));
+		} else {
+			rtw_write8(padapter, REG_GPIO_PIN_CTRL + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL + 1) & ~BIT(index));
+		}
+	} else {
+		/* 88C Series: */
+		/* index: 11~8 transform to 3~0 */
+		/* 8723 Series: */
+		/* index: 12~8 transform to 4~0 */  
+		index -= 8;
+
+		/* config GPIO mode */
+		rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 3, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 3) & ~BIT(index) );
+
+		/* config GPIO Sel */
+		/* 0: input */
+		/* 1: output */
+		rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 2, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 2) | BIT(index));
+
+		/* set output value */
+		if ( OutPutValue ) {
+			rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 1) | BIT(index));
+		} else {
+			rtw_write8(padapter, REG_GPIO_PIN_CTRL_2 + 1, rtw_read8(padapter, REG_GPIO_PIN_CTRL_2 + 1) & ~BIT(index));
+		}
+	}
+}
+#endif
+
 static u32 _InitPowerOn_8188ES(PADAPTER padapter)
 {
 	u8 value8;
@@ -295,7 +354,9 @@ static u32 _InitPowerOn_8188ES(PADAPTER padapter)
 	
 	rtw_write16(padapter, REG_CR, value16);
 
-
+#ifdef CONFIG_GPIO_WAKEUP
+	HostWakeUpGpioClear(padapter);
+#endif
 
 	// Enable CMD53 R/W Operation
 //	bMacPwrCtrlOn = TRUE;
@@ -1212,7 +1273,6 @@ HAL_INIT_PROFILE_TAG(HAL_INIT_STAGES_DOWNLOAD_FW);
 	padapter->bFWReady = _FALSE; //because no fw for test chip	
 	pHalData->fw_ractrl = _FALSE;
 #else
-
 	ret = rtl8188e_FirmwareDownload(padapter, _FALSE);
 
 	if (ret != _SUCCESS) {
@@ -1905,6 +1965,34 @@ Hal_EfuseParsePIDVID_8188ES(
 //	RT_TRACE(COMP_INIT, DBG_LOUD, ("EEPROM PID = 0x%4x\n", pHalData->EEPROMPID));
 }
 
+static void Hal_GetPhyEfuseMACAddr_8188ES(PADAPTER padapter, u8* mac_addr) {
+	int i = 0;
+
+	rtw_efuse_map_read(padapter, EEPROM_MAC_ADDR_88ES, ETH_ALEN, mac_addr);
+
+	if (rtw_check_invalid_mac_address(mac_addr) == _TRUE) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
+		get_random_bytes(mac_addr, ETH_ALEN);
+		mac_addr[0] = 0x00;
+		mac_addr[1] = 0xe0;
+		mac_addr[2] = 0x4c;
+#else
+		mac_addr[0] = 0x00;
+		mac_addr[1] = 0xe0;
+		mac_addr[2] = 0x4c;
+		mac_addr[3] = (u8)(curtime & 0xff) ;
+		mac_addr[4] = (u8)((curtime>>8) & 0xff) ;
+		mac_addr[5] = (u8)((curtime>>16) & 0xff) ;
+#endif
+                DBG_871X("MAC Address from phy efuse error, assign random MAC !!!\n");
+	}
+
+	DBG_871X("%s: Permanent Address = %02x-%02x-%02x-%02x-%02x-%02x\n",
+			__func__, mac_addr[0], mac_addr[1], mac_addr[2],
+			mac_addr[3], mac_addr[4], mac_addr[5]);
+}
+
+
 static void
 Hal_EfuseParseMACAddr_8188ES(
 	IN	PADAPTER		padapter,
@@ -1930,6 +2018,23 @@ Hal_EfuseParseMACAddr_8188ES(
 	}
 //	NicIFSetMacAddress(pAdapter, pAdapter->PermanentAddress);
 
+	if (rtw_check_invalid_mac_address(pEEPROM->mac_addr) == _TRUE) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
+		get_random_bytes(pEEPROM->mac_addr, ETH_ALEN);
+		pEEPROM->mac_addr[0] = 0x00;
+		pEEPROM->mac_addr[1] = 0xe0;
+		pEEPROM->mac_addr[2] = 0x4c;
+#else
+		pEEPROM->mac_addr[0] = 0x00;
+		pEEPROM->mac_addr[1] = 0xe0;
+		pEEPROM->mac_addr[2] = 0x4c;
+		pEEPROM->mac_addr[3] = (u8)(curtime & 0xff) ;
+		pEEPROM->mac_addr[4] = (u8)((curtime>>8) & 0xff) ;
+		pEEPROM->mac_addr[5] = (u8)((curtime>>16) & 0xff) ;
+#endif
+                DBG_871X("MAC Address from efuse error, assign random MAC !!!\n");
+	}
+
 	DBG_871X("Hal_EfuseParseMACAddr_8188ES: Permanent Address = %02x-%02x-%02x-%02x-%02x-%02x\n",
 		  pEEPROM->mac_addr[0], pEEPROM->mac_addr[1],
 		  pEEPROM->mac_addr[2], pEEPROM->mac_addr[3],
@@ -1937,39 +2042,38 @@ Hal_EfuseParseMACAddr_8188ES(
 }
 
 
-#ifdef CONFIG_EFUSE_CONFIG_FILE
 static u32 Hal_readPGDataFromConfigFile(
-	PADAPTER	padapter)
+	PADAPTER	padapter,
+	struct file *fp)
 {
 	u32 i;
-	struct file *fp;
 	mm_segment_t fs;
 	u8 temp[3];
 	loff_t pos = 0;
 	EEPROM_EFUSE_PRIV *pEEPROM = GET_EEPROM_EFUSE_PRIV(padapter);
 	u8	*PROMContent = pEEPROM->efuse_eeprom_data;
 
-
 	temp[2] = 0; // add end of string '\0'
-
-	fp = filp_open("/system/etc/wifi/wifi_efuse.map", O_RDONLY, 0);
-	if (IS_ERR(fp)) {
-		pEEPROM->bloadfile_fail_flag = _TRUE;
-		DBG_871X("Error, Efuse configure file doesn't exist.\n");
-		return _FAIL;
-	}
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	for (i=0; i<HWSET_MAX_SIZE_88E; i++) {
+	for (i = 0 ; i < HWSET_MAX_SIZE_88E ; i++) {
 		vfs_read(fp, temp, 2, &pos);
-		PROMContent[i] = simple_strtoul(temp, NULL, 16 );
-		pos += 1; // Filter the space character
+		PROMContent[i] = simple_strtoul(temp, NULL, 16);
+		if ((i % EFUSE_FILE_COLUMN_NUM) == (EFUSE_FILE_COLUMN_NUM - 1)) {
+			//Filter the lates space char.
+			vfs_read(fp, temp, 1, &pos);
+			if (strchr(temp, ' ') == NULL) {
+				pos--;
+				vfs_read(fp, temp, 2, &pos);
+			}
+		} else {
+			pos += 1; // Filter the space character
+		}
 	}
 
 	set_fs(fs);
-	filp_close(fp, NULL);
 	pEEPROM->bloadfile_fail_flag = _FALSE;
 
 #ifdef CONFIG_DEBUG
@@ -1989,11 +2093,10 @@ static u32 Hal_readPGDataFromConfigFile(
 
 static void
 Hal_ReadMACAddrFromFile_8188ES(
-	PADAPTER		padapter
-	)
+	PADAPTER		padapter,
+	struct file *fp)
 {
 	u32 i;
-	struct file *fp;
 	mm_segment_t fs;
 	u8 source_addr[18];
 	loff_t pos = 0;
@@ -2001,62 +2104,87 @@ Hal_ReadMACAddrFromFile_8188ES(
 	EEPROM_EFUSE_PRIV *pEEPROM = GET_EEPROM_EFUSE_PRIV(padapter);
 	u8 *head, *end;
 
-	u8 null_mac_addr[ETH_ALEN] = {0, 0, 0,0, 0, 0};
-	u8 multi_mac_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-
 	_rtw_memset(source_addr, 0, 18);
 	_rtw_memset(pEEPROM->mac_addr, 0, ETH_ALEN);
 
-	fp = filp_open("/data/wifimac.txt", O_RDWR,  0644);
-	if (IS_ERR(fp)) {
-		pEEPROM->bloadmac_fail_flag = _TRUE;
-		DBG_871X("Error, wifi mac address file doesn't exist.\n");
-	} else {
-		fs = get_fs();
-		set_fs(KERNEL_DS);
+	fs = get_fs();
+	set_fs(KERNEL_DS);
 
-		DBG_871X("wifi mac address:\n");
-		vfs_read(fp, source_addr, 18, &pos);
-		source_addr[17] = ':';
+	DBG_871X("wifi mac address:\n");
+	vfs_read(fp, source_addr, 18, &pos);
+	source_addr[17] = ':';
 
-		head = end = source_addr;
-		for (i=0; i<ETH_ALEN; i++) {
-			while (end && (*end != ':') )
-				end++;
+	head = end = source_addr;
+	for (i=0; i<ETH_ALEN; i++) {
+		while (end && (*end != ':') )
+			end++;
 
-			if (end && (*end == ':') )
-				*end = '\0';
+		if (end && (*end == ':') )
+			*end = '\0';
 
-			pEEPROM->mac_addr[i] = simple_strtoul(head, NULL, 16 );
+		pEEPROM->mac_addr[i] = simple_strtoul(head, NULL, 16 );
 
-			if (end) {
-				end++;
-				head = end;
-			}
-			DBG_871X("%02x \n", pEEPROM->mac_addr[i]);
+		if (end) {
+			end++;
+			head = end;
 		}
-		DBG_871X("\n");
-		set_fs(fs);
-		pEEPROM->bloadmac_fail_flag = _FALSE;
-		filp_close(fp, NULL);
 	}
 
-	if ( (_rtw_memcmp(pEEPROM->mac_addr, null_mac_addr, ETH_ALEN)) ||
-		(_rtw_memcmp(pEEPROM->mac_addr, multi_mac_addr, ETH_ALEN)) ) {
+	set_fs(fs);
+	pEEPROM->bloadmac_fail_flag = _FALSE;
+
+	if (rtw_check_invalid_mac_address(pEEPROM->mac_addr) == _TRUE) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,33))
+		get_random_bytes(pEEPROM->mac_addr, ETH_ALEN);
+		pEEPROM->mac_addr[0] = 0x00;
+		pEEPROM->mac_addr[1] = 0xe0;
+		pEEPROM->mac_addr[2] = 0x4c;
+#else
 		pEEPROM->mac_addr[0] = 0x00;
 		pEEPROM->mac_addr[1] = 0xe0;
 		pEEPROM->mac_addr[2] = 0x4c;
 		pEEPROM->mac_addr[3] = (u8)(curtime & 0xff) ;
 		pEEPROM->mac_addr[4] = (u8)((curtime>>8) & 0xff) ;
 		pEEPROM->mac_addr[5] = (u8)((curtime>>16) & 0xff) ;
+#endif
+                DBG_871X("MAC Address from wifimac error is invalid, assign random MAC !!!\n");
 	}
 
-	DBG_871X("Hal_ReadMACAddrFromFile_8188ES: Permanent Address = %02x-%02x-%02x-%02x-%02x-%02x\n",
-		  pEEPROM->mac_addr[0], pEEPROM->mac_addr[1],
-		  pEEPROM->mac_addr[2], pEEPROM->mac_addr[3],
-		  pEEPROM->mac_addr[4], pEEPROM->mac_addr[5]);
+	DBG_871X("%s: Permanent Address = %02x-%02x-%02x-%02x-%02x-%02x\n",
+			__func__, pEEPROM->mac_addr[0], pEEPROM->mac_addr[1],
+			pEEPROM->mac_addr[2], pEEPROM->mac_addr[3],
+			pEEPROM->mac_addr[4], pEEPROM->mac_addr[5]);
 }
-#endif //CONFIG_EFUSE_CONFIG_FILE
+
+static int check_phy_efuse_tx_power_info_valid(PADAPTER padapter) {
+	EEPROM_EFUSE_PRIV *pEEPROM = GET_EEPROM_EFUSE_PRIV(padapter);
+	u8* pContent = pEEPROM->efuse_eeprom_data;
+	int index = 0;
+
+	for (index = 0 ; index < 12 ; index++) {
+		if (pContent[EEPROM_TX_PWR_INX_88E+index] == 0xFF) {
+			return _FALSE;
+		} else {
+			DBG_871X("0x%02x ,", pContent[EEPROM_TX_PWR_INX_88E+index]);
+		}
+	}
+	DBG_871X("\n");
+	return _TRUE;
+}
+
+static int check_phy_efuse_macaddr_info_valid(PADAPTER padapter) {
+
+	u8 val = 0;
+
+	rtw_efuse_map_read(padapter, EEPROM_MAC_ADDR_88ES, 1, &val);
+
+	if (val == 0xFF) {
+		return _FALSE;
+	} else {
+		DBG_871X("phy efuse with valid MAC addr\n");
+		return _TRUE;
+	}
+}
 
 static VOID
 readAdapterInfo_8188ES(
@@ -2064,16 +2192,33 @@ readAdapterInfo_8188ES(
 	)
 {
 	EEPROM_EFUSE_PRIV *pEEPROM = GET_EEPROM_EFUSE_PRIV(padapter);
+	struct file *fp = NULL;
 
 	/* parse the eeprom/efuse content */
 	Hal_EfuseParseIDCode88E(padapter, pEEPROM->efuse_eeprom_data);
 	Hal_EfuseParsePIDVID_8188ES(padapter, pEEPROM->efuse_eeprom_data, pEEPROM->bautoload_fail_flag);
-	
+
+#if 1
+	if (check_phy_efuse_macaddr_info_valid(padapter) == _TRUE) {
+		DBG_871X("using phy efuse mac\n");
+		Hal_GetPhyEfuseMACAddr_8188ES(padapter, pEEPROM->mac_addr);
+	} else {
+		fp = filp_open(WIFIMAC_PATH, O_RDONLY, 0);
+		if (fp == NULL || IS_ERR(fp)) {
+			DBG_871X("wifimac does not exist!!\n");
+			Hal_GetPhyEfuseMACAddr_8188ES(padapter, pEEPROM->mac_addr);
+		} else {
+			Hal_ReadMACAddrFromFile_8188ES(padapter, fp);
+			filp_close(fp, NULL);
+		}
+	}
+#else
 #ifdef CONFIG_EFUSE_CONFIG_FILE
 	Hal_ReadMACAddrFromFile_8188ES(padapter);
 #else //CONFIG_EFUSE_CONFIG_FILE
 	Hal_EfuseParseMACAddr_8188ES(padapter, pEEPROM->efuse_eeprom_data, pEEPROM->bautoload_fail_flag);
 #endif //CONFIG_EFUSE_CONFIG_FILE
+#endif
 	
 	Hal_ReadPowerSavingMode88E(padapter, pEEPROM->efuse_eeprom_data, pEEPROM->bautoload_fail_flag);
 	Hal_ReadTxPowerInfo88E(padapter, pEEPROM->efuse_eeprom_data, pEEPROM->bautoload_fail_flag);
@@ -2091,6 +2236,9 @@ readAdapterInfo_8188ES(
 #ifdef CONFIG_WOWLAN
 	Hal_DetectWoWMode(padapter);
 #endif
+#ifdef CONFIG_RF_GAIN_OFFSET
+	Hal_ReadRFGainOffset(padapter, pEEPROM->efuse_eeprom_data, pEEPROM->bautoload_fail_flag);
+#endif	//CONFIG_RF_GAIN_OFFSET
 }
 
 static void _ReadPROMContent(
@@ -2099,6 +2247,7 @@ static void _ReadPROMContent(
 {
 	EEPROM_EFUSE_PRIV *pEEPROM = GET_EEPROM_EFUSE_PRIV(padapter);
 	u8			eeValue;
+	struct file *fp;
 
 	/* check system boot selection */
 	eeValue = rtw_read8(padapter, REG_9346CR);
@@ -2112,11 +2261,25 @@ static void _ReadPROMContent(
 
 //	pHalData->EEType = IS_BOOT_FROM_EEPROM(Adapter) ? EEPROM_93C46 : EEPROM_BOOT_EFUSE;
 
+
+#if 1
+	Hal_InitPGData88E(padapter);
+	if (check_phy_efuse_tx_power_info_valid(padapter) == _FALSE) {
+		fp = filp_open(EFUSE_MAP_PATH, O_RDONLY, 0);
+		if (fp == NULL || IS_ERR(fp)) {
+			DBG_871X("[WARNING] invalid phy efuse and no efuse file, use driver default!!\n");
+		} else {
+			Hal_readPGDataFromConfigFile(padapter, fp);
+			filp_close(fp, NULL);
+		}
+	}
+#else
 #ifdef CONFIG_EFUSE_CONFIG_FILE
 	Hal_readPGDataFromConfigFile(padapter);
 #else //CONFIG_EFUSE_CONFIG_FILE
 	Hal_InitPGData88E(padapter);
 #endif //CONFIG_EFUSE_CONFIG_FILE	
+#endif
 	readAdapterInfo_8188ES(padapter);
 }
 
@@ -2472,9 +2635,8 @@ static void hw_var_set_macaddr(PADAPTER Adapter, u8 variable, u8* val)
 
 	for(idx = 0 ; idx < 6; idx++)
 	{
-		rtw_write8(Adapter, (reg_macid+idx), val[idx]);
+		rtw_write8(GET_PRIMARY_ADAPTER(Adapter), (reg_macid+idx), val[idx]);
 	}
-	
 }
 
 static void hw_var_set_bssid(PADAPTER Adapter, u8 variable, u8* val)
@@ -2831,41 +2993,6 @@ _func_enter_;
 		case HW_VAR_BSSID:
 			hw_var_set_bssid(Adapter, variable, val);
 			break;
-		case HW_VAR_BASIC_RATE:
-			{
-				u16			BrateCfg = 0;
-				u8			RateIndex = 0;
-
-				// 2007.01.16, by Emily
-				// Select RRSR (in Legacy-OFDM and CCK)
-				// For 8190, we select only 24M, 12M, 6M, 11M, 5.5M, 2M, and 1M from the Basic rate.
-				// We do not use other rates.
-				HalSetBrateCfg( Adapter, val, &BrateCfg );
-				DBG_8192C("HW_VAR_BASIC_RATE: BrateCfg(%#x)\n", BrateCfg);
-
-				//2011.03.30 add by Luke Lee
-				//CCK 2M ACK should be disabled for some BCM and Atheros AP IOT
-				//because CCK 2M has poor TXEVM
-				//CCK 5.5M & 11M ACK should be enabled for better performance
-
-				pHalData->BasicRateSet = BrateCfg = (BrateCfg |0xd) & 0x15d;
-
-				BrateCfg |= 0x01; // default enable 1M ACK rate
-				// Set RRSR rate table.
-				rtw_write8(Adapter, REG_RRSR, BrateCfg&0xff);
-				rtw_write8(Adapter, REG_RRSR+1, (BrateCfg>>8)&0xff);
-				rtw_write8(Adapter, REG_RRSR+2, rtw_read8(Adapter, REG_RRSR+2)&0xf0);
-
-				// Set RTS initial rate
-				while(BrateCfg > 0x1)
-				{
-					BrateCfg = (BrateCfg>> 1);
-					RateIndex++;
-				}
-				// Ziv - Check
-				rtw_write8(Adapter, REG_INIRTS_RATE_SEL, RateIndex);
-			}
-			break;
 		case HW_VAR_TXPAUSE:
 			rtw_write8(Adapter, REG_TXPAUSE, *((u8 *)val));
 			break;
@@ -3105,13 +3232,6 @@ _func_enter_;
 					regTmp &= (~BIT1);
 				rtw_write8(Adapter,REG_WMAC_TRXPTCL_CTL+2,regTmp);				
 			}
-			break;
-		case HW_VAR_SEC_CFG:
-#ifdef CONFIG_CONCURRENT_MODE
-			rtw_write8(Adapter, REG_SECCFG, 0x0c|BIT(5));// enable tx enc and rx dec engine, and no key search for MC/BC				
-#else
-			rtw_write8(Adapter, REG_SECCFG, *((u8 *)val));
-#endif
 			break;
 		case HW_VAR_CAM_EMPTY_ENTRY:
 			{
@@ -3417,9 +3537,11 @@ _func_enter_;
 				case WOWLAN_ENABLE:
 					DBG_871X_LEVEL(_drv_always_, "WOWLAN_ENABLE\n");
 
+#ifndef DYNAMIC_CAMID_ALLOC
 					val8 = (psecuritypriv->dot11AuthAlgrthm == dot11AuthAlgrthm_8021X)? 0xcc: 0xcf;
 					rtw_write8(Adapter, REG_SECCFG, val8);
 					DBG_871X_LEVEL(_drv_always_, "REG_SECCFG: %02x\n", rtw_read8(Adapter, REG_SECCFG));
+#endif
 
 					SetFwRelatedForWoWLAN8188ES(Adapter, _TRUE);
 
@@ -3430,12 +3552,19 @@ _func_enter_;
 					//if(pwrctl->wowlan_pattern==_TRUE)
 					//	rtw_wowlan_reload_pattern(Adapter);
 
+					//disable TX Report, only use in 88e
+					rtw_write8(Adapter, REG_TX_RPT_CTRL,
+							((rtw_read8(Adapter, REG_TX_RPT_CTRL)&~BIT(1)))&~BIT(5));
+					DBG_871X("disable TXRPT:0x%02x\n",
+							rtw_read8(Adapter, REG_TX_RPT_CTRL));
+
 					//RX DMA stop
 					DBG_871X_LEVEL(_drv_always_, "Pause DMA\n");
 					rtw_write32(Adapter,REG_RXPKT_NUM,(rtw_read32(Adapter,REG_RXPKT_NUM)|RW_RELEASE_EN));
 					do{
 						if((rtw_read32(Adapter, REG_RXPKT_NUM)&RXDMA_IDLE)) {
 							DBG_871X_LEVEL(_drv_always_, "RX_DMA_IDLE is true\n");
+							DBG_871X("0x284-1:0x%08x\n", rtw_read32(Adapter, 0x284));
 							break;
 						} else {
 							// If RX_DMA is not idle, receive one pkt from DMA
@@ -3451,6 +3580,10 @@ _func_enter_;
 							DBG_871X_LEVEL(_drv_always_, "RecvOnePkt Result: %d\n", res);
 						}
 					}while(trycnt--);
+
+					DBG_871X("0x284-2:0x%08x\n", rtw_read32(Adapter, 0x284));
+					DBG_871X("TX_RPT-2:0x%02x\n", rtw_read8(Adapter, REG_TX_RPT_CTRL));
+
 					if(trycnt ==0)
 						DBG_871X_LEVEL(_drv_always_, "Stop RX DMA failed...... \n");
 
@@ -3474,7 +3607,11 @@ _func_enter_;
 
 					//Set WOWLAN H2C command.
 					DBG_871X_LEVEL(_drv_always_, "Set WOWLan cmd\n");
-					rtl8188es_set_wowlan_cmd(Adapter, 1);
+					rtl8188es_set_wowlan_ctrl_cmd(Adapter, 1);
+					rtl8188es_set_global_info_cmd(Adapter, 1);
+					rtl8188es_set_keep_alive_cmd(Adapter, 1);
+					rtl8188es_set_disconnect_decision_cmd(Adapter, 1);
+					rtl8188es_set_remote_wake_ctrl_cmd(Adapter, 1);
 
 					mstatus = rtw_read8(Adapter, REG_WOW_CTRL);
 					trycnt = 10;
@@ -3482,14 +3619,17 @@ _func_enter_;
 					while(!(mstatus&BIT1) && trycnt>1) {
 						mstatus = rtw_read8(Adapter, REG_WOW_CTRL);
 						DBG_871X_LEVEL(_drv_always_, "Loop index: %d :0x%02x\n", trycnt, mstatus);
+						DBG_871X_LEVEL(_drv_always_, "0x284 0x%08x\n", rtw_read32(Adapter, 0x284));
+						DBG_871X_LEVEL(_drv_always_, "0x11c 0x%08x\n", rtw_read32(Adapter, 0x11c));
+						DBG_871X_LEVEL(_drv_always_, "0x1c4 0x%08x\n", rtw_read32(Adapter, 0x1c4));
+						DBG_871X_LEVEL(_drv_always_, "0x690 0x%08x\n", rtw_read32(Adapter, 0x690));
 						trycnt --;
-						rtw_msleep_os(2);
+						rtw_msleep_os(20);
 					}
 
 					pwrctl->wowlan_wake_reason = rtw_read8(Adapter, REG_WOWLAN_WAKE_REASON);
 					DBG_871X_LEVEL(_drv_always_, "wowlan_wake_reason: 0x%02x\n",
 										pwrctl->wowlan_wake_reason);
-					
 					//rtw_msleep_os(10);
 					break;
 				case WOWLAN_DISABLE:
@@ -3497,21 +3637,32 @@ _func_enter_;
 					
 					DBG_871X_LEVEL(_drv_always_, "WOWLAN_DISABLE\n");
 					rtl8188e_set_FwJoinBssReport_cmd(Adapter, 0);
-
+					
+#ifndef DYNAMIC_CAMID_ALLOC
 					rtw_write8(	Adapter, REG_SECCFG, 0x0c|BIT(5));// enable tx enc and rx dec engine, and no key search for MC/BC
 					DBG_871X_LEVEL(_drv_always_, "REG_SECCFG: %02x\n", rtw_read8(Adapter, REG_SECCFG));
-					
-					pwrctl->wowlan_wake_reason = 
-												rtw_read8(Adapter, REG_WOWLAN_WAKE_REASON);
+#endif
+
+					pwrctl->wowlan_wake_reason = rtw_read8(Adapter, REG_WOWLAN_WAKE_REASON);
 					DBG_871X_LEVEL(_drv_always_, "wakeup_reason: 0x%02x\n",
 												pwrctl->wowlan_wake_reason);
-					rtl8188es_set_wowlan_cmd(Adapter, 0);
+					//rtl8188es_set_wowlan_cmd(Adapter, 0);
+					rtl8188es_set_wowlan_ctrl_cmd(Adapter, 0);
+					rtl8188es_set_global_info_cmd(Adapter, 0);
+					rtl8188es_set_keep_alive_cmd(Adapter, 0);
+					rtl8188es_set_disconnect_decision_cmd(Adapter, 0);
+					rtl8188es_set_remote_wake_ctrl_cmd(Adapter, 0);
+
 					mstatus = rtw_read8(Adapter, REG_WOW_CTRL);
 					DBG_871X_LEVEL(_drv_info_, "%s mstatus:0x%02x\n", __func__, mstatus);
 
 					while(mstatus&BIT1 && trycnt>1) {
 						mstatus = rtw_read8(Adapter, REG_WOW_CTRL);
 						DBG_871X_LEVEL(_drv_always_, "Loop index: %d :0x%02x\n", trycnt, mstatus);
+						DBG_871X_LEVEL(_drv_always_, "0x284 0x%08x\n", rtw_read32(Adapter, 0x284));
+						DBG_871X_LEVEL(_drv_always_, "0x11c 0x%08x\n", rtw_read32(Adapter, 0x11c));
+						DBG_871X_LEVEL(_drv_always_, "0x1c4 0x%08x\n", rtw_read32(Adapter, 0x1c4));
+						DBG_871X_LEVEL(_drv_always_, "0x690 0x%08x\n", rtw_read32(Adapter, 0x690));
 						trycnt --;
 						rtw_msleep_os(2);
 					}
@@ -3523,6 +3674,11 @@ _func_enter_;
 						DBG_871X_LEVEL(_drv_always_, "Release RXDMA\n");
 						rtw_write32(Adapter, REG_RXPKT_NUM,(rtw_read32(Adapter,REG_RXPKT_NUM)&(~RW_RELEASE_EN)));
 					}
+
+					//enable TX Report, only use in 88e
+					rtw_write8(Adapter, REG_TX_RPT_CTRL,
+							((rtw_read8(Adapter, REG_TX_RPT_CTRL)|BIT(1)))|BIT(5));
+					DBG_871X("enable TX_RPT:0x%02x\n", rtw_read8(Adapter, REG_TX_RPT_CTRL));
 
 					// 3.1 read fw iv
 					iv_low = rtw_read32(Adapter, REG_TXPKTBUF_IV_LOW);
@@ -3536,7 +3692,10 @@ _func_enter_;
 					rtw_set_sec_pn(Adapter);
 
 					SetFwRelatedForWoWLAN8188ES(Adapter, _FALSE);
-
+#ifdef CONFIG_GPIO_WAKEUP
+					DBG_871X_LEVEL(_drv_always_, "Set Wake GPIO to high for default.\n");
+					HalSetOutPutGPIO(Adapter, WAKEUP_GPIO_IDX, 1);
+#endif
 					if((pwrctl->wowlan_wake_reason != FWDecisionDisconnect) &&
 						(pwrctl->wowlan_wake_reason != Rx_Pairwisekey) &&
 						(pwrctl->wowlan_wake_reason != Rx_DisAssoc) &&
@@ -3590,6 +3749,9 @@ _func_enter_;
 
 	switch (variable)
 	{
+		case HW_VAR_CPWM:
+			*val = rtw_read8(padapter, SDIO_LOCAL_BASE|SDIO_REG_HCPWM1);
+			break;
 		case HW_VAR_TXPAUSE:
 			val[0] = rtw_read8(padapter, REG_TXPAUSE);
 			break;

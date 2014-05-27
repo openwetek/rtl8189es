@@ -159,7 +159,8 @@ void rtl8188e_fill_fake_txdesc(
 	u8*			pDesc,
 	u32			BufferLen,
 	u8			IsPsPoll,
-	u8			IsBTQosNull)
+	u8			IsBTQosNull,
+	u8			bDataFrame)
 {
 	struct tx_desc *ptxdesc;
 
@@ -196,6 +197,36 @@ void rtl8188e_fill_fake_txdesc(
 
 	//offset 16
 	ptxdesc->txdw4 |= cpu_to_le32(BIT(8));//driver uses rate
+
+	//
+	// Encrypt the data frame if under security mode excepct null data. Suggested by CCW.
+	//
+	if (_TRUE ==bDataFrame)
+	{
+		u32 EncAlg;
+
+		EncAlg = padapter->securitypriv.dot11PrivacyAlgrthm;
+		switch (EncAlg)
+		{
+			case _NO_PRIVACY_:
+				SET_TX_DESC_SEC_TYPE_8188E(pDesc, 0x0);
+				break;
+			case _WEP40_:
+			case _WEP104_:
+			case _TKIP_:
+				SET_TX_DESC_SEC_TYPE_8188E(pDesc, 0x1);
+				break;
+			case _SMS4_:
+				SET_TX_DESC_SEC_TYPE_8188E(pDesc, 0x2);
+				break;
+			case _AES_:
+				SET_TX_DESC_SEC_TYPE_8188E(pDesc, 0x3);
+				break;
+			default:
+				SET_TX_DESC_SEC_TYPE_8188E(pDesc, 0x0);
+				break;
+		}
+	}
 
 #if defined(CONFIG_USB_HCI) || defined(CONFIG_SDIO_HCI)
 	// USB interface drop packet if the checksum of descriptor isn't correct.

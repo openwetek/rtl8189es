@@ -3201,15 +3201,22 @@ Hal_ReadPowerValueFromPROM_8188E(
 	_rtw_memset(pwrInfo24G, 0, sizeof(TxPowerInfo24G));
 
 	if(AutoLoadFail)
-	{	
+	{
 		for(rfPath = 0 ; rfPath < pHalData->NumTotalRFPath ; rfPath++)
 		{
-			//2.4G default value
-			for(group = 0 ; group < MAX_CHNL_GROUP_24G; group++)
-			{
-				pwrInfo24G->IndexCCK_Base[rfPath][group] =	EEPROM_DEFAULT_24G_INDEX;
-				pwrInfo24G->IndexBW40_Base[rfPath][group] =	EEPROM_DEFAULT_24G_INDEX;
+			//2.4G default CCK ITX value 
+			for (group = 0;group < MAX_CHNL_GROUP_24G;group++) {
+				pwrInfo24G->IndexCCK_Base[rfPath][group] =
+					EEPROM_DEFAULT_24G_CCK_TX_INDEX;
 			}
+
+			//2.4G default BW40 ITX value 
+			for (group = 0;group < MAX_CHNL_GROUP_24G-1;group ++) {
+				pwrInfo24G->IndexBW40_Base[rfPath][group] =
+					EEPROM_DEFAULT_24G_BW40_TX_INDEX;
+
+			}
+
 			for(TxCount=0;TxCount<MAX_TX_COUNT;TxCount++)
 			{
 				if(TxCount==0)
@@ -3235,7 +3242,7 @@ Hal_ReadPowerValueFromPROM_8188E(
 
 	for(rfPath = 0 ; rfPath < pHalData->NumTotalRFPath ; rfPath++)
 	{
-		//2.4G default value
+		//2.4G default CCK ITX value 
 		for(group = 0 ; group < MAX_CHNL_GROUP_24G; group++)
 		{
 			//printk(" IndexCCK_Base rfPath:%d group:%d,eeAddr:0x%02x ",rfPath,group,eeAddr);
@@ -3243,18 +3250,19 @@ Hal_ReadPowerValueFromPROM_8188E(
 			//printk(" IndexCCK_Base:%02x \n",pwrInfo24G->IndexCCK_Base[rfPath][group] );
 			if(pwrInfo24G->IndexCCK_Base[rfPath][group] == 0xFF)
 			{
-				pwrInfo24G->IndexCCK_Base[rfPath][group] = EEPROM_DEFAULT_24G_INDEX;
+				pwrInfo24G->IndexCCK_Base[rfPath][group] = EEPROM_DEFAULT_24G_CCK_TX_INDEX;
 //				pHalData->bNOPG = TRUE; 							
 			}
 		}
+		//2.4G default BW40 ITX value 
 		for(group = 0 ; group < MAX_CHNL_GROUP_24G-1; group++)
 		{
 			//printk(" IndexBW40_Base rfPath:%d group:%d,eeAddr:0x%02x ",rfPath,group,eeAddr);
 			pwrInfo24G->IndexBW40_Base[rfPath][group] =	PROMContent[eeAddr++];
 			//printk(" IndexBW40_Base: %02x \n",pwrInfo24G->IndexBW40_Base[rfPath][group]  );
 			if(pwrInfo24G->IndexBW40_Base[rfPath][group] == 0xFF)
-				pwrInfo24G->IndexBW40_Base[rfPath][group] =	EEPROM_DEFAULT_24G_INDEX;
-		}			
+				pwrInfo24G->IndexBW40_Base[rfPath][group] = EEPROM_DEFAULT_24G_BW40_TX_INDEX;
+		}
 		for(TxCount=0;TxCount<MAX_TX_COUNT_8188E;TxCount++)
 		{
 			if(TxCount==0)
@@ -3713,6 +3721,48 @@ Hal_ReadThermalMeter_88E(
 
 }
 
+#ifdef CONFIG_RF_GAIN_OFFSET
+void Hal_ReadRFGainOffset(
+	IN		PADAPTER	Adapter,
+	IN		u8*		PROMContent,
+	IN		BOOLEAN		AutoloadFail)
+{
+	//
+	// BB_RF Gain Offset from EEPROM
+	//
+
+	if (!AutoloadFail) {
+		Adapter->eeprompriv.EEPROMRFGainOffset =PROMContent[EEPROM_RF_GAIN_OFFSET];
+		DBG_871X("AutoloadFail =%x,\n", AutoloadFail);
+		Adapter->eeprompriv.EEPROMRFGainVal=EFUSE_Read1Byte(Adapter, EEPROM_RF_GAIN_VAL);
+		DBG_871X("Adapter->eeprompriv.EEPROMRFGainVal=%x\n", Adapter->eeprompriv.EEPROMRFGainVal);
+	} else {
+		Adapter->eeprompriv.EEPROMRFGainVal=EFUSE_Read1Byte(Adapter,EEPROM_RF_GAIN_VAL);
+		
+		if(Adapter->eeprompriv.EEPROMRFGainVal != 0xFF)
+			Adapter->eeprompriv.EEPROMRFGainOffset = BIT4;
+		else
+			Adapter->eeprompriv.EEPROMRFGainOffset = 0;		
+		DBG_871X("else AutoloadFail =%x,\n", AutoloadFail);
+	}
+	
+	if(Adapter->eeprompriv.EEPROMRFGainOffset & BIT4)
+	{
+		HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(Adapter);
+		u8 thermal_offset = EFUSE_Read1Byte(Adapter, EEPROM_THERMAL_OFFSET);
+		if( thermal_offset != 0xFF){
+			if(thermal_offset & BIT0)
+				pHalData->EEPROMThermalMeter += ((thermal_offset>>1) & 0x0F);
+			else
+				pHalData->EEPROMThermalMeter -= ((thermal_offset>>1) & 0x0F);
+
+			DBG_871X("pHalData->EEPROMThermalMeter=%x\n", pHalData->EEPROMThermalMeter);
+		}		
+	}
+	
+	DBG_871X("EEPRORFGainOffset = 0x%02x\n", Adapter->eeprompriv.EEPROMRFGainOffset);
+}
+#endif //CONFIG_RF_GAIN_OFFSET
 
 void
 Hal_InitChannelPlan(
@@ -3831,6 +3881,48 @@ void SetHwReg8188E(_adapter *adapter, u8 variable, u8 *val)
 _func_enter_;
 
 	switch (variable) {
+		case HW_VAR_BASIC_RATE:
+		{
+			struct mlme_ext_info *mlmext_info = &adapter->mlmeextpriv.mlmext_info;
+			u16 input_b = 0, masked = 0, ioted = 0, BrateCfg = 0, RateIndex = 0;
+			u16 rrsr_2g_force_mask = (RRSR_11M|RRSR_5_5M|RRSR_1M);
+			u16 rrsr_2g_allow_mask = (RRSR_24M|RRSR_12M|RRSR_6M|RRSR_11M|RRSR_5_5M|RRSR_1M);
+
+			HalSetBrateCfg(adapter, val, &BrateCfg);
+			input_b = BrateCfg;
+
+			/* apply force and allow mask */
+			BrateCfg |= rrsr_2g_force_mask;
+			BrateCfg &= rrsr_2g_allow_mask;
+			masked = BrateCfg;
+
+			/* IOT consideration */
+			if (mlmext_info->assoc_AP_vendor == HT_IOT_PEER_CISCO) {
+				/* if peer is cisco and didn't use ofdm rate, we enable 6M ack */
+				if((BrateCfg & (RRSR_24M|RRSR_12M|RRSR_6M)) == 0)
+					BrateCfg |= RRSR_6M;
+			}
+			if (mlmext_info->assoc_AP_vendor == HT_IOT_PEER_ATHEROS)
+				BrateCfg |= RRSR_2M;
+			ioted = BrateCfg;
+
+			HalData->BasicRateSet = BrateCfg;
+
+			DBG_8192C("HW_VAR_BASIC_RATE: %#x -> %#x -> %#x\n", input_b, masked, ioted);
+
+			// Set RRSR rate table.
+			rtw_write16(adapter, REG_RRSR, BrateCfg);
+			rtw_write8(adapter, REG_RRSR+2, rtw_read8(adapter, REG_RRSR+2)&0xf0);
+
+			// Set RTS initial rate
+			while(BrateCfg > 0x1)
+			{
+				BrateCfg = (BrateCfg>> 1);
+				RateIndex++;
+			}
+			rtw_write8(adapter, REG_INIRTS_RATE_SEL, RateIndex);
+		}
+		break;
 	case HW_VAR_CHECK_TXBUF:
 	{
 		u8 retry_limit;
