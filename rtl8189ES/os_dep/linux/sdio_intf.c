@@ -58,8 +58,6 @@ static const struct sdio_device_id sdio_ids[] =
 //	{ /* end: all zeroes */				},
 };
 
-
-
 static int rtw_drv_init(struct sdio_func *func, const struct sdio_device_id *id);
 static void rtw_dev_remove(struct sdio_func *func);
 static int rtw_sdio_resume(struct device *dev);
@@ -1163,10 +1161,6 @@ int rtw_resume_process(_adapter *padapter)
 
 	DBG_871X("bkeepfwalive(%x)\n",pwrpriv->bkeepfwalive);
 
-	if(pm_netdev_close(pnetdev, _TRUE) == 0) {
-		DBG_871X("netdev_close success\n");
-	}
-
 	if(pm_netdev_open(pnetdev,_TRUE) != 0) {
 		ret = -1;
 		pdbgpriv->dbg_resume_error_cnt++;
@@ -1346,32 +1340,38 @@ static int rtw_sdio_resume(struct device *dev)
 	DBG_871X("==> %s (%s:%d)\n",__FUNCTION__, current->comm, current->pid);
 	pdbgpriv->dbg_resume_cnt++;
 
-	if(pwrpriv->bInternalAutoSuspend ){
- 		ret = rtw_resume_process(padapter);
-	} else {
-#ifdef CONFIG_RESUME_IN_WORKQUEUE
-		rtw_resume_in_workqueue(pwrpriv);
-#else
-		if (rtw_is_earlysuspend_registered(pwrpriv)
-			#ifdef CONFIG_WOWLAN
-			&& !pwrpriv->wowlan_mode
-			#endif /* CONFIG_WOWLAN */
-			#ifdef CONFIG_AP_WOWLAN
-			&& !pwrpriv->wowlan_ap_mode
-			#endif /* CONFIG_AP_WOWLAN*/
-		) {
-			/* jeff: bypass resume here, do in late_resume */
-			rtw_set_do_late_resume(pwrpriv, _TRUE);
-		} else {
-			
-			//rtw_lock_suspend_timeout(4000);
+	if(pwrpriv->bInternalAutoSuspend)
+	{
+		ret = rtw_resume_process(padapter);
+	}
+	else
+	{
+		if(pwrpriv->wowlan_mode || pwrpriv->wowlan_ap_mode)
+		{
 			rtw_resume_lock_suspend();
-			
 			ret = rtw_resume_process(padapter);
 			rtw_resume_unlock_suspend();
 		}
-#endif /* CONFIG_RESUME_IN_WORKQUEUE */
+		else
+		{
+#ifdef CONFIG_RESUME_IN_WORKQUEUE
+			rtw_resume_in_workqueue(pwrpriv);
+#else
+			if (rtw_is_earlysuspend_registered(pwrpriv))
+			{
+				/* jeff: bypass resume here, do in late_resume */
+				rtw_set_do_late_resume(pwrpriv, _TRUE);
+			}
+			else
+			{
+				rtw_resume_lock_suspend();
+				ret = rtw_resume_process(padapter);
+				rtw_resume_unlock_suspend();
+			}
+#endif
+		}
 	}
+
 	pmlmeext->last_scan_time = rtw_get_current_time();
 	DBG_871X("<========  %s return %d\n", __FUNCTION__, ret);
 	return ret;
@@ -1453,8 +1453,6 @@ static void __exit rtw_drv_halt(void)
 	rtw_suspend_lock_uninit();
 	rtw_drv_proc_deinit();
 	rtw_ndev_notifier_unregister();
-	
-
 
 	DBG_871X_LEVEL(_drv_always_, "module exit success\n");
 

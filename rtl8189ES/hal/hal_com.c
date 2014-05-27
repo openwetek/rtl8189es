@@ -1019,6 +1019,40 @@ _func_enter_;
 	case HW_VAR_PORT_SWITCH:
 		hw_var_port_switch(adapter);
 		break;
+	case HW_VAR_SEC_CFG:
+	{
+		#if defined(CONFIG_CONCURRENT_MODE) && !defined(DYNAMIC_CAMID_ALLOC)
+		// enable tx enc and rx dec engine, and no key search for MC/BC
+		rtw_write8(adapter, REG_SECCFG, SCR_NoSKMC|SCR_RxDecEnable|SCR_TxEncEnable);
+		#elif defined(DYNAMIC_CAMID_ALLOC)
+		u16 reg_scr;
+
+		reg_scr = rtw_read16(adapter, REG_SECCFG);
+		rtw_write16(adapter, REG_SECCFG, reg_scr|SCR_CHK_KEYID|SCR_RxDecEnable|SCR_TxEncEnable);
+		#else
+		rtw_write8(adapter, REG_SECCFG, *((u8*)val));
+		#endif
+	}
+		break;
+	case HW_VAR_SEC_DK_CFG:
+	{
+		struct security_priv *sec = &adapter->securitypriv;
+		u8 reg_scr = rtw_read8(adapter, REG_SECCFG);
+
+		if (val) /* Enable default key related setting */
+		{
+			reg_scr |= SCR_TXBCUSEDK;
+			if (sec->dot11AuthAlgrthm != dot11AuthAlgrthm_8021X)
+				reg_scr |= (SCR_RxUseDK|SCR_TxUseDK);
+		}
+		else /* Disable default key related setting */
+		{
+			reg_scr &= ~(SCR_RXBCUSEDK|SCR_TXBCUSEDK|SCR_RxUseDK|SCR_TxUseDK);
+		}
+
+		rtw_write8(adapter, REG_SECCFG, reg_scr);
+	}
+		break;
 	case HW_VAR_DM_FLAG:
 		odm->SupportAbility = *((u32*)val);
 		break;
@@ -1631,3 +1665,134 @@ void rtw_store_phy_info(_adapter *padapter, union recv_frame *prframe)
 	}
 }
 #endif
+
+#ifdef CONFIG_RF_GAIN_OFFSET
+u32 Array_kfreemap[] = { 
+0xf8,0xe,
+0xf6,0xc,
+0xf4,0xa,
+0xf2,0x8,
+0xf0,0x6,
+0xf3,0x4,
+0xf5,0x2,
+0xf7,0x0,
+0xf9,0x0,
+0xfc,0x0,
+};
+
+void rtw_bb_rf_gain_offset(_adapter *padapter)
+{
+	u8	value = padapter->eeprompriv.EEPROMRFGainOffset;
+	u8	tmp = 0x3e;
+	u32	res,i=0;
+	u4Byte	   ArrayLen    = sizeof(Array_kfreemap)/sizeof(u32);
+	pu4Byte    Array	   = Array_kfreemap;
+	u4Byte v1=0,v2=0,target=0; 
+	DBG_871X("+%s EEPROMRFGainOffset(0x%02x): 0x%02x+\n",
+			__func__, EEPROM_RF_GAIN_OFFSET, value);
+#if defined(CONFIG_RTL8723A)
+	if (value & BIT0) {
+		DBG_871X("Offset RF Gain.\n");
+		DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x\n",padapter->eeprompriv.EEPROMRFGainVal);
+		if(padapter->eeprompriv.EEPROMRFGainVal != 0xff){
+			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0xd, 0xffffffff);
+			DBG_871X("Offset RF Gain. reg 0xd=0x%x\n",res);
+			res &= 0xfff87fff;
+
+			res |= (padapter->eeprompriv.EEPROMRFGainVal & 0x0f)<< 15;
+			DBG_871X("Offset RF Gain.	 reg 0xd=0x%x\n",res);
+
+			rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET_CCK, RF_GAIN_OFFSET_MASK, res);
+
+			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0xe, 0xffffffff);
+			DBG_871X("Offset RF Gain. reg 0xe=0x%x\n",res);
+			res &= 0xfffffff0;
+
+			res |= (padapter->eeprompriv.EEPROMRFGainVal & 0x0f);
+			DBG_871X("Offset RF Gain.	 reg 0xe=0x%x\n",res);
+
+			rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET_OFDM, RF_GAIN_OFFSET_MASK, res);
+		}
+		else
+		{
+			DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x	!= 0xff, didn't run Kfree\n",padapter->eeprompriv.EEPROMRFGainVal);
+		}
+	} else {
+		DBG_871X("Using the default RF gain.\n");
+	}
+#elif defined(CONFIG_RTL8723B)
+	if (value & BIT4) {
+		DBG_871X("Offset RF Gain.\n");
+		DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x\n",padapter->eeprompriv.EEPROMRFGainVal);
+		if(padapter->eeprompriv.EEPROMRFGainVal != 0xff){
+			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0x7f, 0xffffffff);
+			res &= 0xfff87fff;
+			DBG_871X("Offset RF Gain. before reg 0x7f=0x%08x\n",res);
+			//res &= 0xfff87fff;
+			for (i = 0; i < ArrayLen; i += 2 )
+			{
+				v1 = Array[i];
+				v2 = Array[i+1];
+				 if ( v1 == padapter->eeprompriv.EEPROMRFGainVal )
+				 {
+						DBG_871X("Offset RF Gain. got v1 =0x%x ,v2 =0x%x \n",v1,v2);
+						target=v2;
+						break;
+				 }
+			}	 
+			DBG_871X("padapter->eeprompriv.EEPROMRFGainVal=0x%x ,Gain offset Target Value=0x%x\n",padapter->eeprompriv.EEPROMRFGainVal,target);
+			PHY_SetRFReg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, BIT18|BIT17|BIT16|BIT15, target);
+
+			//res |= (padapter->eeprompriv.EEPROMRFGainVal & 0x0f)<< 15;
+			//rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, RF_GAIN_OFFSET_MASK, res);
+			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0x7f, 0xffffffff);
+			DBG_871X("Offset RF Gain. After reg 0x7f=0x%08x\n",res);
+		}
+		else
+		{
+			DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x	!= 0xff, didn't run Kfree\n",padapter->eeprompriv.EEPROMRFGainVal);
+		}
+	} else {
+		DBG_871X("Using the default RF gain.\n");
+	}
+
+#elif defined(CONFIG_RTL8188E)
+	if (value & BIT4) {
+		DBG_871X("8188ES Offset RF Gain.\n");
+		DBG_871X("8188ES Offset RF Gain. EEPROMRFGainVal=0x%x\n",
+				padapter->eeprompriv.EEPROMRFGainVal);
+
+		if (padapter->eeprompriv.EEPROMRFGainVal != 0xff) {
+			res = rtw_hal_read_rfreg(padapter, RF_PATH_A,
+					REG_RF_BB_GAIN_OFFSET, 0xffffffff);
+
+			DBG_871X("Offset RF Gain. reg 0x55=0x%x\n",res);
+			res &= 0xfff87fff;
+
+			res |= (padapter->eeprompriv.EEPROMRFGainVal & 0x0f) << 15;
+			DBG_871X("Offset RF Gain. res=0x%x\n",res);
+
+			rtw_hal_write_rfreg(padapter, RF_PATH_A,
+					REG_RF_BB_GAIN_OFFSET,
+					RF_GAIN_OFFSET_MASK, res);
+		} else {
+			DBG_871X("Offset RF Gain. EEPROMRFGainVal=0x%x == 0xff, didn't run Kfree\n",
+					padapter->eeprompriv.EEPROMRFGainVal);
+		}
+	} else {
+		DBG_871X("Using the default RF gain.\n");
+	}
+#else
+	if (!(value & 0x01)) {
+		//DBG_871X("Offset RF Gain.\n");
+		res = rtw_hal_read_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, 0xffffffff);
+		value &= tmp;
+		res = value << 14;
+		rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, RF_GAIN_OFFSET_MASK, res);
+	} else {
+		DBG_871X("Using the default RF gain.\n");
+	}
+#endif
+}
+#endif //CONFIG_RF_GAIN_OFFSET
+

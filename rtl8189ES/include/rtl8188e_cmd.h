@@ -226,6 +226,11 @@ typedef struct _SETAOAC_GLOBAL_INFO{
 #define FW_ADOPT_USER					BIT(1)
 */
 void rtl8188es_set_wowlan_cmd(_adapter* padapter, u8 enable);
+void rtl8188es_set_global_info_cmd(_adapter* padapter, u8 enable);
+void rtl8188es_set_keep_alive_cmd(_adapter* padapter, u8 enable);
+void rtl8188es_set_disconnect_decision_cmd(_adapter* padapter, u8 enable);
+void rtl8188es_set_wowlan_ctrl_cmd(_adapter* padapter, u8 enable);
+void rtl8188es_set_remote_wake_ctrl_cmd(_adapter* padapter, u8 enable);
 void SetFwRelatedForWoWLAN8188ES(_adapter* padapter, u8 bHostIsGoingtoSleep);
 
 #endif//CONFIG_WOWLAN

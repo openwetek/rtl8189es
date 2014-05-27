@@ -34,7 +34,10 @@
 #include <wlan_bssdef.h>
 #include <wifi.h>
 #include <ieee80211.h>
-
+#ifdef CONFIG_ARP_KEEP_ALIVE
+#include <net/neighbour.h>
+#include <net/arp.h>
+#endif
 
 #ifdef PLATFORM_OS_XP
 #include <drv_types_xp.h>
@@ -418,6 +421,11 @@ struct rtw_traffic_statistics {
 	u32	cur_rx_tp; // Rx throughput in MBps.
 };
 
+struct cam_ctl_t {
+	_lock lock;
+	u64 bitmap;
+};
+
 struct cam_entry_cache {
 	u16 ctrl;
 	u8 mac[ETH_ALEN];
@@ -459,8 +467,9 @@ struct dvobj_priv
 	//padapters[IFACE_ID1] == if2
 	_adapter *padapters[IFACE_ID_MAX];
 	u8 iface_nums; // total number of ifaces used runtime
-
-	struct cam_entry_cache cam_cache[32];
+	
+	struct cam_ctl_t cam_ctl;
+	struct cam_entry_cache cam_cache[TOTAL_CAM_ENTRY];
 
 	//For 92D, DMDP have 2 interface.
 	u8	InterfaceNumber;
@@ -928,6 +937,11 @@ void rtw_dev_pno_debug(struct net_device *net);
 #endif //CONFIG_PNO_SET_DEBUG
 #endif //CONFIG_PNO_SUPPORT
 
+#ifdef CONFIG_GPIO_API
+int rtw_get_gpio(struct net_device *netdev, int gpio_num);
+int rtw_set_gpio_output_value(struct net_device *netdev, int gpio_num, BOOLEAN isHigh);
+int rtw_config_gpio(struct net_device *netdev, int gpio_num, BOOLEAN isOutput);
+#endif
 __inline static u8 *myid(struct eeprom_priv *peepriv)
 {
 	return (peepriv->mac_addr);

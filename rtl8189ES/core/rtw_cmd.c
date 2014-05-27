@@ -329,8 +329,9 @@ int rtw_cmd_filter(struct cmd_priv *pcmdpriv, struct cmd_obj *cmd_obj)
 	if(cmd_obj->cmdcode == GEN_CMD_CODE(_SetChannelPlan))
 		bAllow = _TRUE;
 
+
 	if( (pcmdpriv->padapter->hw_init_completed ==_FALSE && bAllow == _FALSE)
-		|| pcmdpriv->cmdthd_running== _FALSE	//com_thread not running
+		|| ATOMIC_READ(&(pcmdpriv->cmdthd_running)) == _FALSE	//com_thread not running
 	)
 	{
 		//DBG_871X("%s:%s: drop cmdcode:%u, hw_init_completed:%u, cmdthd_running:%u\n", caller_func, __FUNCTION__,
@@ -351,7 +352,7 @@ u32 rtw_enqueue_cmd(struct cmd_priv *pcmdpriv, struct cmd_obj *cmd_obj)
 	int res = _FAIL;
 	PADAPTER padapter = pcmdpriv->padapter;
 	
-_func_enter_;	
+_func_enter_;
 	
 	if (cmd_obj == NULL) {
 		goto exit;
@@ -372,6 +373,7 @@ _func_enter_;
 
 	res = _rtw_enqueue_cmd(&pcmdpriv->cmd_queue, cmd_obj);
 
+	
 	if(res == _SUCCESS)
 		_rtw_up_sema(&pcmdpriv->cmd_queue_sema);
 	
@@ -387,7 +389,6 @@ struct	cmd_obj	*rtw_dequeue_cmd(struct cmd_priv *pcmdpriv)
 	struct cmd_obj *cmd_obj;
 	
 _func_enter_;		
-
 	cmd_obj = _rtw_dequeue_cmd(&pcmdpriv->cmd_queue);
 		
 _func_exit_;			
@@ -430,11 +431,16 @@ _func_exit_;
 
 void rtw_stop_cmd_thread(_adapter *adapter)
 {
-	if(adapter->cmdThread && adapter->cmdpriv.cmdthd_running == _TRUE
-		&& adapter->cmdpriv.stop_req == 0)
+	if(adapter->cmdThread &&
+		ATOMIC_READ(&(adapter->cmdpriv.cmdthd_running)) == _TRUE &&
+		adapter->cmdpriv.stop_req == 0)
 	{
+		DBG_871X("%s: up sema\n", __func__);
 		adapter->cmdpriv.stop_req = 1;
 		_rtw_up_sema(&adapter->cmdpriv.cmd_queue_sema);
+		DBG_871X("%s: terminate_cmdthread_sema: %d\n",
+			__func__,
+			adapter->cmdpriv.terminate_cmdthread_sema.count);
 		_rtw_down_sema(&adapter->cmdpriv.terminate_cmdthread_sema);
 	}
 }
@@ -455,12 +461,13 @@ thread_return rtw_cmd_thread(thread_context context)
 _func_enter_;
 
 	thread_enter("RTW_CMD_THREAD");
+	DBG_871X("pcmdpriv-1: %p\n", pcmdpriv);
 
 	pcmdbuf = pcmdpriv->cmd_buf;
 	prspbuf = pcmdpriv->rsp_buf;
 
 	pcmdpriv->stop_req = 0;
-	pcmdpriv->cmdthd_running=_TRUE;
+	ATOMIC_SET(&(pcmdpriv->cmdthd_running), _TRUE);
 	_rtw_up_sema(&pcmdpriv->terminate_cmdthread_sema);
 
 	RT_TRACE(_module_rtl871x_cmd_c_,_drv_info_,("start r871x rtw_cmd_thread !!!!\n"));
@@ -476,6 +483,8 @@ _func_enter_;
 		{
 			DBG_871X_LEVEL(_drv_always_, "%s: DriverStopped(%d) SurpriseRemoved(%d) break at line %d\n",
 				__FUNCTION__, padapter->bDriverStopped, padapter->bSurpriseRemoved, __LINE__);
+			DBG_871X("%s: terminate_cmdthread_sema: %d\n", __func__,
+				padapter->cmdpriv.terminate_cmdthread_sema.count);
 			break;
 		}
 
@@ -502,8 +511,10 @@ _func_enter_;
 _next:
 		if ((padapter->bDriverStopped == _TRUE)||(padapter->bSurpriseRemoved== _TRUE))
 		{
+			__asm__("Isaac1:");
 			DBG_871X_LEVEL(_drv_always_, "%s: DriverStopped(%d) SurpriseRemoved(%d) break at line %d\n",
 				__FUNCTION__, padapter->bDriverStopped, padapter->bSurpriseRemoved, __LINE__);
+			__asm__("Isaac2:");
 			break;
 		}
 
@@ -604,12 +615,13 @@ post_process:
 
 		flush_signals_thread();
 
+		__asm__("Isaac3:");
 		goto _next;
 
 	}
-	pcmdpriv->cmdthd_running=_FALSE;
 
-
+	DBG_871X("pcmdpriv-2: %p\n", pcmdpriv);
+	DBG_871X("Isaac-0\n");
 	// free all cmd_obj resources
 	do{
 		pcmd = rtw_dequeue_cmd(pcmdpriv);
@@ -617,10 +629,11 @@ post_process:
 #ifdef CONFIG_LPS_LCLK
 			rtw_unregister_cmd_alive(padapter);
 #endif
+			DBG_871X("%s: pcmd==NULL\n", __FUNCTION__);
 			break;
 		}
 
-		//DBG_871X("%s: leaving... drop cmdcode:%u size:%d\n", __FUNCTION__, pcmd->cmdcode, pcmd->cmdsz);
+		DBG_871X("%s: leaving... drop cmdcode:%u size:%d\n", __FUNCTION__, pcmd->cmdcode, pcmd->cmdsz);
 
 		if (pcmd->cmdcode == GEN_CMD_CODE(_Set_Drv_Extra)) {
 			extra_parm = (struct drvextra_cmd_parm *)pcmd->parmbuf;
@@ -629,13 +642,17 @@ post_process:
 			}
 		}
 
-		rtw_free_cmd_obj(pcmd);	
+		rtw_free_cmd_obj(pcmd);
 	}while(1);
 
+	__asm__("Isaac6:");
+	DBG_871X("Isaac-1\n");
 	_rtw_up_sema(&pcmdpriv->terminate_cmdthread_sema);
+	ATOMIC_SET(&(pcmdpriv->cmdthd_running), _FALSE);
+	__asm__("Isaac7:");
 
 _func_exit_;
-
+	DBG_871X("Isaac-2\n");
 	thread_exit();
 
 }
@@ -1570,7 +1587,7 @@ _func_exit_;
 	return res;
 }
 
-u8 rtw_setstakey_cmd(_adapter *padapter, u8 *psta, u8 unicast_key, bool enqueue)
+u8 rtw_setstakey_cmd(_adapter *padapter, struct sta_info *sta, u8 unicast_key, bool enqueue)
 {
 	struct cmd_obj*			ph2c;
 	struct set_stakey_parm	*psetstakey_para;
@@ -1579,7 +1596,6 @@ u8 rtw_setstakey_cmd(_adapter *padapter, u8 *psta, u8 unicast_key, bool enqueue)
 	
 	struct mlme_priv			*pmlmepriv = &padapter->mlmepriv;
 	struct security_priv 		*psecuritypriv = &padapter->securitypriv;
-	struct sta_info* 			sta = (struct sta_info* )psta;
 	u8	res=_SUCCESS;
 
 _func_enter_;
@@ -1651,7 +1667,8 @@ _func_exit_;
 	return res;
 }
 
-u8 rtw_clearstakey_cmd(_adapter *padapter, u8 *psta, u8 entry, u8 enqueue)
+u8 rtw_clearstakey_cmd(_adapter *padapter, struct sta_info *sta, u8 enqueue)
+
 {
 	struct cmd_obj*			ph2c;
 	struct set_stakey_parm	*psetstakey_para;
@@ -1659,14 +1676,19 @@ u8 rtw_clearstakey_cmd(_adapter *padapter, u8 *psta, u8 entry, u8 enqueue)
 	struct set_stakey_rsp		*psetstakey_rsp = NULL;	
 	struct mlme_priv			*pmlmepriv = &padapter->mlmepriv;
 	struct security_priv 		*psecuritypriv = &padapter->securitypriv;
-	struct sta_info* 			sta = (struct sta_info* )psta;
+	s16 cam_id = 0;
 	u8	res=_SUCCESS;
 
 _func_enter_;
 
 	if(!enqueue)
 	{
-		clear_cam_entry(padapter, entry);
+		while((cam_id = rtw_camid_search(padapter, sta->hwaddr, -1)) >= 0) {
+			DBG_871X_LEVEL(_drv_always_, "clear key for addr:"MAC_FMT", camid:%d\n", MAC_ARG(sta->hwaddr), cam_id);
+			clear_cam_entry(padapter, cam_id);
+			rtw_camid_free(padapter, cam_id);
+		}
+
 	}
 	else
 	{
@@ -1698,8 +1720,6 @@ _func_enter_;
 		_rtw_memcpy(psetstakey_para->addr, sta->hwaddr, ETH_ALEN);
 
 		psetstakey_para->algorithm = _NO_PRIVACY_;
-
-		psetstakey_para->id = entry;
 	
 		res = rtw_enqueue_cmd(pcmdpriv, ph2c);	
 		

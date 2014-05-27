@@ -31,6 +31,8 @@
 #define AUTOCONF_INCLUDED
 #define RTL871X_MODULE_NAME "8189ES"
 #define DRV_NAME "rtl8189es"
+#define EFUSE_MAP_PATH "/system/etc/wifi/wifi_efuse_8189e.map"
+#define WIFIMAC_PATH "/data/wifimac.txt"
 
 #define CONFIG_SDIO_HCI
 #define PLATFORM_LINUX
@@ -137,7 +139,7 @@
 #define CONFIG_TX_AGGREGATION
 //#define CONFIG_SDIO_TX_TASKLET
 #define CONFIG_SDIO_RX_COPY
-#define CONFIG_SDIO_TX_ENABLE_AVAL_INT
+//#define CONFIG_SDIO_TX_ENABLE_AVAL_INT
 
 /*
  * Others
@@ -260,6 +262,11 @@
 
 #define CONFIG_ATTEMPT_TO_FIX_AP_BEACON_ERROR
 
+#ifdef CONFIG_GPIO_WAKEUP
+#define WAKEUP_GPIO_IDX 7
+#endif
+
+#define CONFIG_GPIO_API
 /*
  * HAL	Related Config
  */
@@ -269,7 +276,10 @@
 
 #define DISABLE_BB_RF	0
 
+#define CONFIG_RF_GAIN_OFFSET
 #define CONFIG_80211D
+
+#define CONFIG_ARP_KEEP_ALIVE
 
 /*
  * Debug Related Config
@@ -283,6 +293,8 @@
 
 #define DBG_CONFIG_ERROR_DETECT
 #define DBG_CONFIG_ERROR_RESET
+
+//#define CONFIG_DISABLE_ODM
 
 //#define DBG_IO
 //#define DBG_DELAY_OS

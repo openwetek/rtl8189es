@@ -781,12 +781,6 @@ u32 mp_join(PADAPTER padapter,u8 mode)
 		RT_TRACE(_module_mp_, _drv_notice_, ("+start mp in normal mode\n"));
 	}
 #endif
-		_clr_fwstate_(pmlmepriv, _FW_UNDER_SURVEY);
-		_clr_fwstate_(pmlmepriv, _FW_UNDER_LINKING);
-		_clr_fwstate_(pmlmepriv, _FW_LINKED);
-		_clr_fwstate_(pbuddymlmepriv, _FW_UNDER_SURVEY);
-		_clr_fwstate_(pbuddymlmepriv, _FW_UNDER_LINKING);
-		_clr_fwstate_(pbuddymlmepriv, _FW_LINKED);
 
 	set_fwstate(pmlmepriv, _FW_UNDER_LINKING);
 	set_fwstate(pmlmepriv, WIFI_ADHOC_MASTER_STATE);

@@ -2212,10 +2212,6 @@ int _netdev_open(struct net_device *pnetdev)
 
 		DBG_871X("MAC Address = "MAC_FMT"\n", MAC_ARG(pnetdev->dev_addr));
 
-#ifdef CONFIG_RF_GAIN_OFFSET
-		rtw_bb_rf_gain_offset(padapter);
-#endif //CONFIG_RF_GAIN_OFFSET
-
 		status=rtw_start_drv_threads(padapter);
 		if(status ==_FAIL)
 		{
@@ -2322,10 +2318,6 @@ int  ips_netdrv_open(_adapter *padapter)
 		goto netdev_open_error;
 	}
 
-#ifdef CONFIG_RF_GAIN_OFFSET
-	rtw_bb_rf_gain_offset(padapter);
-#endif //CONFIG_RF_GAIN_OFFSET
-
 	if (padapter->intf_start)
 	{
 		padapter->intf_start(padapter);
@@ -2416,110 +2408,6 @@ void rtw_ips_dev_unload(_adapter *padapter)
 	}
 
 }
-
-#ifdef CONFIG_RF_GAIN_OFFSET
-u32 Array_kfreemap[] = { 
-0xf8,0xe,
-0xf6,0xc,
-0xf4,0xa,
-0xf2,0x8,
-0xf0,0x6,
-0xf3,0x4,
-0xf5,0x2,
-0xf7,0x0,
-0xf9,0x0,
-0xfc,0x0,
-};
-
-void rtw_bb_rf_gain_offset(_adapter *padapter)
-{
-	u8		value = padapter->eeprompriv.EEPROMRFGainOffset;
-	u8		tmp = 0x3e;
-	u32 	res,i=0;
-	u4Byte	   ArrayLen    = sizeof(Array_kfreemap)/sizeof(u32);
-	pu4Byte    Array	   = Array_kfreemap;
-	u4Byte v1=0,v2=0,target=0; 
-	//DBG_871X("+%s value: 0x%02x+\n", __func__, value);
-#if defined(CONFIG_RTL8723A)
-	if (value & BIT0) {
-		DBG_871X("Offset RF Gain.\n");
-		DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x\n",padapter->eeprompriv.EEPROMRFGainVal);
-		if(padapter->eeprompriv.EEPROMRFGainVal != 0xff){
-			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0xd, 0xffffffff);
-			DBG_871X("Offset RF Gain. reg 0xd=0x%x\n",res);
-			res &= 0xfff87fff;
-
-			res |= (padapter->eeprompriv.EEPROMRFGainVal & 0x0f)<< 15;
-			DBG_871X("Offset RF Gain.	 reg 0xd=0x%x\n",res);
-
-			rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET_CCK, RF_GAIN_OFFSET_MASK, res);
-
-			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0xe, 0xffffffff);
-			DBG_871X("Offset RF Gain. reg 0xe=0x%x\n",res);
-			res &= 0xfffffff0;
-
-			res |= (padapter->eeprompriv.EEPROMRFGainVal & 0x0f);
-			DBG_871X("Offset RF Gain.	 reg 0xe=0x%x\n",res);
-
-			rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET_OFDM, RF_GAIN_OFFSET_MASK, res);
-		}
-		else
-		{
-			DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x	!= 0xff, didn't run Kfree\n",padapter->eeprompriv.EEPROMRFGainVal);
-		}
-	} else {
-		DBG_871X("Using the default RF gain.\n");
-	}
-#elif defined(CONFIG_RTL8723B)
-	if (value & BIT4) {
-		DBG_871X("Offset RF Gain.\n");
-		DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x\n",padapter->eeprompriv.EEPROMRFGainVal);
-		if(padapter->eeprompriv.EEPROMRFGainVal != 0xff){
-			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0x7f, 0xffffffff);
-			res &= 0xfff87fff;
-			DBG_871X("Offset RF Gain. before reg 0x7f=0x%08x\n",res);
-			//res &= 0xfff87fff;
-			for (i = 0; i < ArrayLen; i += 2 )
-			{
-				v1 = Array[i];
-				v2 = Array[i+1];
-				 if ( v1 == padapter->eeprompriv.EEPROMRFGainVal )
-				 {
-						DBG_871X("Offset RF Gain. got v1 =0x%x ,v2 =0x%x \n",v1,v2);
-						target=v2;
-						break;
-				 }
-			}	 
-			DBG_871X("padapter->eeprompriv.EEPROMRFGainVal=0x%x ,Gain offset Target Value=0x%x\n",padapter->eeprompriv.EEPROMRFGainVal,target);
-			PHY_SetRFReg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, BIT18|BIT17|BIT16|BIT15, target);
-
-			//res |= (padapter->eeprompriv.EEPROMRFGainVal & 0x0f)<< 15;
-			//rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, RF_GAIN_OFFSET_MASK, res);
-			res = rtw_hal_read_rfreg(padapter, RF_PATH_A, 0x7f, 0xffffffff);
-			DBG_871X("Offset RF Gain. After reg 0x7f=0x%08x\n",res);
-		}
-		else
-		{
-			DBG_871X("Offset RF Gain.  padapter->eeprompriv.EEPROMRFGainVal=0x%x	!= 0xff, didn't run Kfree\n",padapter->eeprompriv.EEPROMRFGainVal);
-		}
-	} else {
-		DBG_871X("Using the default RF gain.\n");
-	}
-#else
-	if (!(value & 0x01)) {
-		//DBG_871X("Offset RF Gain.\n");
-		res = rtw_hal_read_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, 0xffffffff);
-		value &= tmp;
-		res = value << 14;
-		rtw_hal_write_rfreg(padapter, RF_PATH_A, REG_RF_BB_GAIN_OFFSET, RF_GAIN_OFFSET_MASK, res);
-	} else {
-		DBG_871X("Using the default RF gain.\n");
-	}
-#endif
-	
-}
-#endif //CONFIG_RF_GAIN_OFFSET
-
 
 int pm_netdev_open(struct net_device *pnetdev,u8 bnormal)
 {
@@ -2635,12 +2523,291 @@ void rtw_ndev_destructor(struct net_device *ndev)
 	free_netdev(ndev);
 }
 
+#ifdef CONFIG_ARP_KEEP_ALIVE
+struct route_info {
+    struct in_addr dst_addr;
+    struct in_addr src_addr;
+    struct in_addr gateway;
+    unsigned int dev_index;
+};
+
+static void parse_routes(struct nlmsghdr *nl_hdr, struct route_info *rt_info)
+{
+    struct rtmsg *rt_msg;
+    struct rtattr *rt_attr;
+    int rt_len;
+
+    rt_msg = (struct rtmsg *) NLMSG_DATA(nl_hdr);
+    if ((rt_msg->rtm_family != AF_INET) || (rt_msg->rtm_table != RT_TABLE_MAIN))
+        return;
+
+    rt_attr = (struct rtattr *) RTM_RTA(rt_msg);
+    rt_len = RTM_PAYLOAD(nl_hdr);
+
+    for (; RTA_OK(rt_attr, rt_len); rt_attr = RTA_NEXT(rt_attr, rt_len)) 
+	{
+        switch (rt_attr->rta_type) {
+        case RTA_OIF:
+		rt_info->dev_index = *(int *) RTA_DATA(rt_attr);
+            break;
+        case RTA_GATEWAY:
+            rt_info->gateway.s_addr = *(u_int *) RTA_DATA(rt_attr);
+            break;
+        case RTA_PREFSRC:
+            rt_info->src_addr.s_addr = *(u_int *) RTA_DATA(rt_attr);
+            break;
+        case RTA_DST:
+            rt_info->dst_addr.s_addr = *(u_int *) RTA_DATA(rt_attr);
+            break;
+        }
+    }
+}
+
+static int route_dump(u32 *gw_addr ,int* gw_index)
+{
+	int err = 0;
+	struct socket *sock;
+	struct {
+		struct nlmsghdr nlh;
+		struct rtgenmsg g;
+	} req;
+	struct msghdr msg;
+	struct iovec iov;
+	struct sockaddr_nl nladdr;
+	mm_segment_t oldfs;
+	char *pg;
+	int size = 0;
+
+	err = sock_create(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE, &sock);
+	if (err)
+	{
+		printk( ": Could not create a datagram socket, error = %d\n", -ENXIO);
+		return err;
+	}
+	
+	memset(&nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+
+	req.nlh.nlmsg_len = sizeof(req);
+	req.nlh.nlmsg_type = RTM_GETROUTE;
+	req.nlh.nlmsg_flags = NLM_F_ROOT | NLM_F_MATCH | NLM_F_REQUEST;
+	req.nlh.nlmsg_pid = 0;
+	req.g.rtgen_family = AF_INET;
+
+	iov.iov_base = &req;
+	iov.iov_len = sizeof(req);
+
+	msg.msg_name = &nladdr;
+	msg.msg_namelen = sizeof(nladdr);
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = NULL;
+	msg.msg_controllen = 0;
+	msg.msg_flags = MSG_DONTWAIT;
+
+	oldfs = get_fs(); set_fs(KERNEL_DS);
+	err = sock_sendmsg(sock, &msg, sizeof(req));
+	set_fs(oldfs);
+
+	if (size < 0)
+		goto out_sock;
+
+	pg = (char *) __get_free_page(GFP_KERNEL);
+	if (pg == NULL) {
+		err = -ENOMEM;
+		goto out_sock;
+	}
+
+#if defined(CONFIG_IPV6) || defined (CONFIG_IPV6_MODULE)
+restart:
+#endif
+
+	for (;;) 
+	{
+		struct nlmsghdr *h;
+
+		iov.iov_base = pg;
+		iov.iov_len = PAGE_SIZE;
+
+		oldfs = get_fs(); set_fs(KERNEL_DS);
+		err = sock_recvmsg(sock, &msg, PAGE_SIZE, MSG_DONTWAIT);
+		set_fs(oldfs);
+
+		if (err < 0)
+			goto out_sock_pg;
+
+		if (msg.msg_flags & MSG_TRUNC) {
+			err = -ENOBUFS;
+			goto out_sock_pg;
+		}
+
+		h = (struct nlmsghdr*) pg;
+		
+		while (NLMSG_OK(h, err)) 
+		{
+			struct route_info rt_info;
+			if (h->nlmsg_type == NLMSG_DONE) {
+				err = 0;
+				goto done;
+			}
+
+			if (h->nlmsg_type == NLMSG_ERROR) {
+				struct nlmsgerr *errm = (struct nlmsgerr*) NLMSG_DATA(h);
+				err = errm->error;
+				printk( "NLMSG error: %d\n", errm->error);
+				goto done;
+			}
+
+			if (h->nlmsg_type == RTM_GETROUTE)
+			{
+				printk( "RTM_GETROUTE: NLMSG: %d\n", h->nlmsg_type);
+			}
+			if (h->nlmsg_type != RTM_NEWROUTE) {
+				printk( "NLMSG: %d\n", h->nlmsg_type);
+				err = -EINVAL;
+				goto done;
+			}
+
+			memset(&rt_info, 0, sizeof(struct route_info));
+			parse_routes(h, &rt_info);
+			if(!rt_info.dst_addr.s_addr && rt_info.gateway.s_addr && rt_info.dev_index)
+			{
+				*gw_addr = rt_info.gateway.s_addr;
+				*gw_index = rt_info.dev_index;
+				 	
+			}
+			h = NLMSG_NEXT(h, err);
+		}
+
+		if (err) 
+		{
+			printk( "!!!Remnant of size %d %d %d\n", err, h->nlmsg_len, h->nlmsg_type);
+			err = -EINVAL;
+			break;
+		}
+	}
+
+done:
+#if defined(CONFIG_IPV6) || defined (CONFIG_IPV6_MODULE)
+	if (!err && req.g.rtgen_family == AF_INET) {
+		req.g.rtgen_family = AF_INET6;
+
+		iov.iov_base = &req;
+		iov.iov_len = sizeof(req);
+
+		msg.msg_name = &nladdr;
+		msg.msg_namelen = sizeof(nladdr);
+		msg.msg_iov = &iov;
+		msg.msg_iovlen = 1;
+		msg.msg_control = NULL;
+		msg.msg_controllen = 0;
+		msg.msg_flags=MSG_DONTWAIT;
+
+		oldfs = get_fs(); set_fs(KERNEL_DS);
+		err = sock_sendmsg(sock, &msg, sizeof(req));
+		set_fs(oldfs);
+
+		if (err > 0)
+			goto restart;
+	}
+#endif
+
+out_sock_pg:
+	free_page((unsigned long) pg);
+
+out_sock:
+	sock_release(sock);
+	return err;
+}
+
+static int arp_query(unsigned char *haddr, u32 paddr,
+             struct net_device *dev)
+{
+	struct neighbour *neighbor_entry;
+	int	ret = 0;
+
+	neighbor_entry = neigh_lookup(&arp_tbl, &paddr, dev);
+
+	if (neighbor_entry != NULL) {
+		neighbor_entry->used = jiffies;
+		if (neighbor_entry->nud_state & NUD_VALID) {
+			_rtw_memcpy(haddr, neighbor_entry->ha, dev->addr_len);
+			ret = 1;
+		}
+		neigh_release(neighbor_entry);
+	}
+	return ret;
+}
+
+static int get_defaultgw(u32 *ip_addr ,char mac[])
+{
+	int gw_index = 0; // oif device index
+	struct net_device *gw_dev = NULL; //oif device
+	
+	route_dump(ip_addr, &gw_index);
+
+	if( !(*ip_addr) || !gw_index )
+	{
+		//DBG_871X("No default GW \n");
+		return -1;
+	}
+
+	gw_dev = dev_get_by_index(&init_net, gw_index);
+
+	if(gw_dev == NULL)
+	{
+		//DBG_871X("get Oif Device Fail \n");
+		return -1;
+	}
+	
+	if(!arp_query(mac, *ip_addr, gw_dev))
+	{
+		//DBG_871X( "arp query failed\n");
+		dev_put(gw_dev);
+		return -1;
+		
+	}
+	dev_put(gw_dev);
+	
+	return 0;
+}
+
+int	rtw_gw_addr_query(_adapter *padapter)
+{
+	struct mlme_priv	*pmlmepriv = &padapter->mlmepriv;
+	u32 gw_addr = 0; // default gw address
+	unsigned char gw_mac[32] = {0}; // default gw mac
+	int i;
+	int res;
+
+	res = get_defaultgw(&gw_addr, gw_mac);
+	if(!res)
+	{
+		pmlmepriv->gw_ip[0] = gw_addr&0xff;
+		pmlmepriv->gw_ip[1] = (gw_addr&0xff00)>>8;
+		pmlmepriv->gw_ip[2] = (gw_addr&0xff0000)>>16;
+		pmlmepriv->gw_ip[3] = (gw_addr&0xff000000)>>24;
+		_rtw_memcpy(pmlmepriv->gw_mac_addr, gw_mac, 6);
+		DBG_871X("%s Gateway Mac:\t" MAC_FMT "\n", __FUNCTION__, MAC_ARG(pmlmepriv->gw_mac_addr));
+		DBG_871X("%s Gateway IP:\t" IP_FMT "\n", __FUNCTION__, IP_ARG(pmlmepriv->gw_ip));
+	}
+	else
+	{
+		DBG_871X("Get Gateway IP/MAC fail!\n");
+	}
+
+	return res;
+}
+#endif
+
 void rtw_dev_unload(PADAPTER padapter)
 {
 	struct net_device *pnetdev = (struct net_device*)padapter->pnetdev;	
 	struct pwrctrl_priv *pwrctl = adapter_to_pwrctl(padapter);
 	struct dvobj_priv *pobjpriv = padapter->dvobj;
 	struct debug_priv *pdbgpriv = &pobjpriv->drv_dbg;
+	struct cmd_priv *pcmdpriv = &padapter->cmdpriv;
+	u8 cnt = 0;
 
 	RT_TRACE(_module_hci_intfs_c_, _drv_notice_, ("+%s\n",__FUNCTION__));
 
@@ -2661,7 +2828,18 @@ void rtw_dev_unload(PADAPTER padapter)
 
 		if (!pwrctl->bInternalAutoSuspend)
 			rtw_stop_drv_threads(padapter);
-		
+
+		while(ATOMIC_READ(&(pcmdpriv->cmdthd_running)) == _TRUE){
+			if (cnt > 5) {
+				DBG_871X("stop cmdthd timeout\n");
+				break;
+			} else {
+				cnt ++;
+				DBG_871X("cmdthd is running(%d)\n", cnt);
+				rtw_msleep_os(10);
+			}
+		}
+
 		RT_TRACE(_module_hci_intfs_c_, _drv_notice_, ("@ %s: stop thread complete!\n",__FUNCTION__));
 
 		//check the status of IPS
@@ -3208,6 +3386,8 @@ exit:
 int rtw_resume_process_wow(_adapter *padapter)
 {
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
+	struct mlme_ext_priv    *pmlmeext = &padapter->mlmeextpriv;
+	struct mlme_ext_info    *pmlmeinfo = &(pmlmeext->mlmext_info);
 	struct net_device *pnetdev = padapter->pnetdev;
 	#ifdef CONFIG_CONCURRENT_MODE
 	struct net_device *pbuddy_netdev;	
@@ -3350,10 +3530,6 @@ _func_enter_;
 		pwrpriv->bkeepfwalive = _FALSE;
 
 		DBG_871X("bkeepfwalive(%x)\n",pwrpriv->bkeepfwalive);
-		
-		if(pm_netdev_close(pnetdev, _TRUE) == 0) {
-			DBG_871X("netdev_close success\n");
-		}
 
 		if(pm_netdev_open(pnetdev,_TRUE) != 0) {
 			ret = -1;
@@ -3388,16 +3564,12 @@ _func_enter_;
 			rtw_indicate_disconnect(padapter);
 			rtw_sta_media_status_rpt(padapter, rtw_get_stainfo(&padapter->stapriv, get_bssid(&padapter->mlmepriv)), 0);
 			rtw_free_assoc_resources(padapter, 1);
+			pmlmeinfo->state = WIFI_FW_NULL_STATE;
 		} else {
 			DBG_871X("%s: do roaming\n", __func__);
 			rtw_roaming(padapter, NULL);
 		}
 	}
-
-	#ifdef CONFIG_RESUME_IN_WORKQUEUE
-	rtw_unlock_suspend();
-	#endif //CONFIG_RESUME_IN_WORKQUEUE
-
 
 	if (pwrpriv->wowlan_wake_reason == Rx_GTK ||
 		pwrpriv->wowlan_wake_reason == Rx_DisAssoc ||
@@ -3551,7 +3723,7 @@ _func_enter_;
 	}	
 
 	#ifdef CONFIG_RESUME_IN_WORKQUEUE
-	rtw_unlock_suspend();
+	//rtw_unlock_suspend();
 	#endif //CONFIG_RESUME_IN_WORKQUEUE
 
 	if (pwrpriv->wowlan_wake_reason == AP_WakeUp)
@@ -3685,7 +3857,7 @@ _func_enter_;
 	#endif
 
 #ifdef CONFIG_RESUME_IN_WORKQUEUE
-	rtw_unlock_suspend();
+	//rtw_unlock_suspend();
 #endif //CONFIG_RESUME_IN_WORKQUEUE
 	DBG_871X("<== "FUNC_ADPT_FMT" exit....\n", FUNC_ADPT_ARG(padapter));
 

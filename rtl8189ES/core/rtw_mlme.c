@@ -1808,6 +1808,7 @@ static struct sta_info *rtw_joinbss_update_stainfo(_adapter *padapter, struct wl
 			_rtw_memset((u8 *)&psta->dot11tkiptxmickey, 0, sizeof (union Keytype));
 						
 			_rtw_memset((u8 *)&psta->dot11txpn, 0, sizeof (union pn48));
+			psta->dot11txpn.val = psta->dot11txpn.val + 1;
 #ifdef CONFIG_IEEE80211W
 			_rtw_memset((u8 *)&psta->dot11wtxpn, 0, sizeof (union pn48));
 #endif //CONFIG_IEEE80211W
@@ -2317,6 +2318,11 @@ _func_enter_;
 #endif //!CONFIG_IOCTL_CFG80211
 #endif //!CONFIG_AUTO_AP_MODE
 		}		
+		if (adapter->stapriv.asoc_sta_count > 1) {
+			DBG_871X("%s asoc_sta_count: %d\n", __func__,
+					adapter->stapriv.asoc_sta_count);
+			rtw_ap_connection_lock_suspend();
+		}
 		goto exit;
 	}	
 #endif //defined (CONFIG_AP_MODE) && defined (CONFIG_NATIVEAP_MLME)
@@ -2378,7 +2384,7 @@ _func_enter_;
 	
 #ifdef CONFIG_RTL8711
 	//submit SetStaKey_cmd to tell fw, fw will allocate an CAM entry for this sta	
-	rtw_setstakey_cmd(adapter, (unsigned char*)psta, _FALSE, _TRUE);
+	rtw_setstakey_cmd(adapter, psta, _FALSE, _TRUE);
 #endif
 		
 exit:
@@ -2429,6 +2435,11 @@ _func_enter_;
 		rtw_cfg80211_indicate_sta_disassoc(adapter, pstadel->macaddr, *(u16*)pstadel->rsvd);
 		#endif //(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37)) || defined(CONFIG_CFG80211_FORCE_COMPATIBLE_2_6_37_UNDER)
 #endif //CONFIG_IOCTL_CFG80211
+		DBG_871X("%s asoc_sta_count: %d\n", __func__,
+				adapter->stapriv.asoc_sta_count);
+		if (adapter->stapriv.asoc_sta_count == 2) {
+			rtw_ap_connection_unlock_suspend();
+		}
 
 		return;
 	}

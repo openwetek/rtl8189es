@@ -191,7 +191,6 @@ typedef struct _RT_8188E_FIRMWARE_HDR
 //	Channel Plan
 //-------------------------------------------------------------------------
 
-
 #define EFUSE_REAL_CONTENT_LEN		512
 #define EFUSE_MAP_LEN				128
 #define EFUSE_MAX_SECTION			16
@@ -209,6 +208,7 @@ typedef struct _RT_8188E_FIRMWARE_HDR
 #define EFUSE_OOB_PROTECT_BYTES 		15	// PG data exclude header, dummy 6 bytes frome CP test and reserved 1byte.
 
 #define		HWSET_MAX_SIZE_88E		512
+#define		EFUSE_FILE_COLUMN_NUM		16
 
 #define		EFUSE_REAL_CONTENT_LEN_88E	256
 #define		EFUSE_MAP_LEN_88E		512
@@ -278,6 +278,10 @@ void Hal_DetectWoWMode(PADAPTER pAdapter);
 //VERSION_8192C rtl8723a_ReadChipVersion(PADAPTER padapter);
 //void rtl8723a_ReadBluetoothCoexistInfo(PADAPTER padapter, u8 *PROMContent, BOOLEAN AutoloadFail);
 void Hal_InitChannelPlan(PADAPTER padapter);
+
+#ifdef CONFIG_RF_GAIN_OFFSET
+void Hal_ReadRFGainOffset(PADAPTER pAdapter,u8* hwinfo,BOOLEAN AutoLoadFail);
+#endif //CONFIG_RF_GAIN_OFFSET
 
 void rtl8188e_set_hal_ops(struct hal_ops *pHalFunc);
 

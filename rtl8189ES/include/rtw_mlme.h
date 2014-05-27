@@ -618,6 +618,8 @@ struct mlme_priv {
 #ifdef CONFIG_CONCURRENT_MODE
 	u8	scanning_via_buddy_intf;
 #endif
+	u8       NumOfBcnInfoChkFail;
+	u32     timeBcnInfoChkStart;
 
 };
 
