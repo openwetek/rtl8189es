@@ -442,6 +442,7 @@ void rtw_stop_cmd_thread(_adapter *adapter)
 			__func__,
 			adapter->cmdpriv.terminate_cmdthread_sema.count);
 		_rtw_down_sema(&adapter->cmdpriv.terminate_cmdthread_sema);
+		kthread_stop(adapter->cmdThread);
 	}
 }
 
@@ -461,7 +462,6 @@ thread_return rtw_cmd_thread(thread_context context)
 _func_enter_;
 
 	thread_enter("RTW_CMD_THREAD");
-	DBG_871X("pcmdpriv-1: %p\n", pcmdpriv);
 
 	pcmdbuf = pcmdpriv->cmd_buf;
 	prspbuf = pcmdpriv->rsp_buf;
@@ -511,10 +511,8 @@ _func_enter_;
 _next:
 		if ((padapter->bDriverStopped == _TRUE)||(padapter->bSurpriseRemoved== _TRUE))
 		{
-			__asm__("Isaac1:");
 			DBG_871X_LEVEL(_drv_always_, "%s: DriverStopped(%d) SurpriseRemoved(%d) break at line %d\n",
 				__FUNCTION__, padapter->bDriverStopped, padapter->bSurpriseRemoved, __LINE__);
-			__asm__("Isaac2:");
 			break;
 		}
 
@@ -615,13 +613,10 @@ post_process:
 
 		flush_signals_thread();
 
-		__asm__("Isaac3:");
 		goto _next;
 
 	}
 
-	DBG_871X("pcmdpriv-2: %p\n", pcmdpriv);
-	DBG_871X("Isaac-0\n");
 	// free all cmd_obj resources
 	do{
 		pcmd = rtw_dequeue_cmd(pcmdpriv);
@@ -645,16 +640,11 @@ post_process:
 		rtw_free_cmd_obj(pcmd);
 	}while(1);
 
-	__asm__("Isaac6:");
-	DBG_871X("Isaac-1\n");
 	_rtw_up_sema(&pcmdpriv->terminate_cmdthread_sema);
 	ATOMIC_SET(&(pcmdpriv->cmdthd_running), _FALSE);
-	__asm__("Isaac7:");
 
 _func_exit_;
-	DBG_871X("Isaac-2\n");
 	thread_exit();
-
 }
 
 
@@ -3413,16 +3403,16 @@ _func_exit_;
 void rtw_disassoc_cmd_callback(_adapter*	padapter,  struct cmd_obj *pcmd)
 {
 	_irqL	irqL;
-	struct 	mlme_priv *pmlmepriv = &padapter->mlmepriv;
-	
-_func_enter_;	
+	struct	mlme_priv *pmlmepriv = &padapter->mlmepriv;
+
+_func_enter_;
 
 	if (pcmd->res != H2C_SUCCESS)
 	{
 		_enter_critical_bh(&pmlmepriv->lock, &irqL);
 		set_fwstate(pmlmepriv, _FW_LINKED);
 		_exit_critical_bh(&pmlmepriv->lock, &irqL);
-				
+
 		RT_TRACE(_module_rtl871x_cmd_c_,_drv_err_,("\n ***Error: disconnect_cmd_callback Fail ***\n."));
 
 		goto exit;
@@ -3434,16 +3424,19 @@ _func_enter_;
 
 	// free cmd
 	rtw_free_cmd_obj(pcmd);
-	
+
 exit:
-	
-_func_exit_;	
+
+_func_exit_;
 }
 
 
 void rtw_joinbss_cmd_callback(_adapter*	padapter,  struct cmd_obj *pcmd)
 {
-	struct 	mlme_priv *pmlmepriv = &padapter->mlmepriv;
+	struct	mlme_priv	*pmlmepriv = &padapter->mlmepriv;
+	struct	mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
+	struct	mlme_ext_info	*pmlmeinfo = &(pmlmeext->mlmext_info);
+	u16	val;
 
 _func_enter_;	
 
@@ -3456,6 +3449,11 @@ _func_enter_;
 	else if(pcmd->res != H2C_SUCCESS)
 	{
 		_set_timer(&pmlmepriv->assoc_timer, 1);
+	}
+	else if (pmlmeinfo->assoc_AP_vendor == HT_IOT_PEER_TPLINK_745N)
+	{
+		val = 0x0404;
+		rtw_hal_set_hwreg(padapter, HW_VAR_MAX_AGGR_NUM, (u8 *)&val);
 	}
 
 	rtw_free_cmd_obj(pcmd);

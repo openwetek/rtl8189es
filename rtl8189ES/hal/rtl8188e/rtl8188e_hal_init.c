@@ -2845,6 +2845,7 @@ void rtl8188e_stop_thread(_adapter *padapter)
 	if (xmitpriv->SdioXmitThread ) {
 		_rtw_up_sema(&xmitpriv->SdioXmitSema);
 		_rtw_down_sema(&xmitpriv->SdioXmitTerminateSema);
+		kthread_stop(xmitpriv->SdioXmitThread);
 		xmitpriv->SdioXmitThread = 0;
 	}
 #endif
@@ -3886,7 +3887,9 @@ _func_enter_;
 			struct mlme_ext_info *mlmext_info = &adapter->mlmeextpriv.mlmext_info;
 			u16 input_b = 0, masked = 0, ioted = 0, BrateCfg = 0, RateIndex = 0;
 			u16 rrsr_2g_force_mask = (RRSR_11M|RRSR_5_5M|RRSR_1M);
-			u16 rrsr_2g_allow_mask = (RRSR_24M|RRSR_12M|RRSR_6M|RRSR_11M|RRSR_5_5M|RRSR_1M);
+			u16 rrsr_2g_allow_mask = (RRSR_24M|RRSR_12M|
+						RRSR_6M|RRSR_11M|
+						RRSR_5_5M|RRSR_2M|RRSR_1M);
 
 			HalSetBrateCfg(adapter, val, &BrateCfg);
 			input_b = BrateCfg;
@@ -3902,8 +3905,7 @@ _func_enter_;
 				if((BrateCfg & (RRSR_24M|RRSR_12M|RRSR_6M)) == 0)
 					BrateCfg |= RRSR_6M;
 			}
-			if (mlmext_info->assoc_AP_vendor == HT_IOT_PEER_ATHEROS)
-				BrateCfg |= RRSR_2M;
+
 			ioted = BrateCfg;
 
 			HalData->BasicRateSet = BrateCfg;

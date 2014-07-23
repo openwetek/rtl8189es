@@ -769,6 +769,12 @@ static int rtw_sdio_suspend(struct device *dev)
 	int ret = 0;
 	u8 ch, bw, offset;
 
+	if(padapter->bDriverStopped == _TRUE)
+	{
+		DBG_871X("%s bDriverStopped = %d\n", __FUNCTION__, padapter->bDriverStopped);
+		goto exit;
+	}
+
 	if (pwrpriv->bInSuspend == _TRUE)
 	{
 		DBG_871X("%s bInSuspend = %d\n", __FUNCTION__, pwrpriv->bInSuspend);
@@ -806,7 +812,7 @@ int rtw_resume_process(_adapter *padapter)
 	struct pwrctrl_priv *pwrpriv = adapter_to_pwrctl(padapter);
 	struct dvobj_priv *psdpriv = padapter->dvobj;
 	struct debug_priv *pdbgpriv = &psdpriv->drv_dbg;
-	
+
 	if (pwrpriv->bInSuspend == _FALSE)
 	{
 		pdbgpriv->dbg_resume_error_cnt++;

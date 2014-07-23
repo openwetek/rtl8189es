@@ -53,6 +53,8 @@
 
 #endif
 
+#define BUSY_TRAFFIC_SCAN_DENY_PERIOD	8000
+
 static const u32 rtw_cipher_suites[] = {
 	WLAN_CIPHER_SUITE_WEP40,
 	WLAN_CIPHER_SUITE_WEP104,
@@ -1916,6 +1918,30 @@ void rtw_cfg80211_indicate_scan_done(_adapter *adapter, bool aborted)
 	_exit_critical_bh(&pwdev_priv->scan_req_lock, &irqL);
 }
 
+void rtw_cfg80211_unlink_bss(_adapter *padapter, struct wlan_network *pnetwork)
+{
+	struct wireless_dev *pwdev = padapter->rtw_wdev;
+	struct wiphy *wiphy = pwdev->wiphy;
+	struct cfg80211_bss *bss = NULL;
+	WLAN_BSSID_EX select_network = pnetwork->network;
+
+	bss = cfg80211_get_bss(wiphy, NULL/*notify_channel*/,
+		select_network.MacAddress, select_network.Ssid.Ssid,
+		select_network.Ssid.SsidLength, 0/*WLAN_CAPABILITY_ESS*/, 
+		0/*WLAN_CAPABILITY_ESS*/);
+
+	if (bss) {
+		cfg80211_unlink_bss(wiphy, bss);
+		DBG_8192C("%s(): cfg80211_unlink %s!! () ",__func__,select_network.Ssid.Ssid );
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)
+		cfg80211_put_bss(padapter->rtw_wdev->wiphy, bss);
+#else
+		cfg80211_put_bss(bss);
+#endif
+	}
+	return;
+}
+
 void rtw_cfg80211_surveydone_event_callback(_adapter *padapter)
 {
 	_irqL	irqL;
@@ -2248,7 +2274,7 @@ if (padapter->registrypriv.mp_mode == 1)
 
 		passtime = rtw_get_passing_time_ms(lastscantime);
 		lastscantime = rtw_get_current_time();
-		if (passtime > 12000)
+		if (passtime > BUSY_TRAFFIC_SCAN_DENY_PERIOD)
 #endif
 		{
 			DBG_871X("%s: bBusyTraffic == _TRUE\n", __FUNCTION__);
@@ -2272,7 +2298,7 @@ if (padapter->registrypriv.mp_mode == 1)
 
 		passtime = rtw_get_passing_time_ms(buddylastscantime);
 		buddylastscantime = rtw_get_current_time();
-		if ((passtime > 12000)
+		if ((passtime > BUSY_TRAFFIC_SCAN_DENY_PERIOD)
 //#ifdef CONFIG_P2P
 //			||(!rtw_p2p_chk_state(&padapter->wdinfo, P2P_STATE_NONE))
 //#endif //CONFIG_P2P
@@ -3179,6 +3205,11 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
 				   u16 reason_code)
 {
 	_adapter *padapter = (_adapter *)rtw_netdev_priv(ndev);
+	_irqL irqL;
+	struct	wlan_network	*pwlan = NULL;
+	struct	mlme_priv	*pmlmepriv = &(padapter->mlmepriv);
+	struct	wlan_network	*tgt_network = &(pmlmepriv->cur_network);
+	u8	cnt = 0;
 
 	DBG_871X(FUNC_NDEV_FMT"\n", FUNC_NDEV_ARG(ndev));
 
@@ -3197,12 +3228,30 @@ static int cfg80211_rtw_disconnect(struct wiphy *wiphy, struct net_device *ndev,
 		rtw_indicate_disconnect(padapter);
 		
 		rtw_free_assoc_resources(padapter, 1);
-		rtw_pwr_wakeup(padapter);		
+
+		_enter_critical_bh(&(pmlmepriv->scanned_queue.lock), &irqL);
+		// remove the network entry in scanned_queue
+		do {
+			pwlan = rtw_find_network(&pmlmepriv->scanned_queue, tgt_network->network.MacAddress);	
+			if (pwlan) {
+				DBG_871X("find target AP in scanned queue(%d)\n", cnt);
+				cnt++;
+				pwlan->fixed = _FALSE;
+				rtw_free_network_nolock(padapter, pwlan);
+			} else {
+				DBG_871X("target AP is not found\n");
+			}
+		}while(pwlan != NULL);
+
+		_exit_critical_bh(&(pmlmepriv->scanned_queue.lock), &irqL);
+
+		rtw_pwr_wakeup(padapter);
 	}
 
 	padapter->mlmepriv.not_indic_disco = _FALSE;
 
 	DBG_871X(FUNC_NDEV_FMT" return 0\n", FUNC_NDEV_ARG(ndev));
+
 	return 0;
 }
 

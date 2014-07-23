@@ -147,6 +147,10 @@ typedef struct _ADAPTER _adapter, ADAPTER,*PADAPTER;
 #include "ioctl_cfg80211.h"
 #endif //CONFIG_IOCTL_CFG80211
 
+#ifdef CONFIG_RTL8188E  
+#include <Hal8188EPhyCfg.h>
+#endif
+
 #include <ip.h>
 #include <if_ether.h>
 #include <ethernet.h>

@@ -1081,6 +1081,10 @@ _func_enter_;
 		*/
 		odm->SupportAbility &= *((u32 *)val);
 		break;
+	case HW_VAR_MAX_AGGR_NUM:
+		DBG_871X("%s HW_VAR_MAX_AGGR_NUM: %04x\n", __func__, *((u16*)val));
+		rtw_write16(adapter, REG_MAX_AGGR_NUM, *((u16*)val));
+		break;
 	default:
 		if (0)
 		DBG_871X_LEVEL(_drv_always_, FUNC_ADPT_FMT" variable(%d) not defined!\n",

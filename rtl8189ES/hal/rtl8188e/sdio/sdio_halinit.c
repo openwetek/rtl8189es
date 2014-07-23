@@ -368,6 +368,131 @@ static u32 _InitPowerOn_8188ES(PADAPTER padapter)
 	
 }
 
+static void hal_poweroff_8188es(PADAPTER padapter)
+{
+	u8		u1bTmp;
+	u16		u2bTmp;
+	u32		u4bTmp;
+	u8		bMacPwrCtrlOn = _FALSE;
+	u8		ret;
+
+#ifdef CONFIG_PLATFORM_SPRD
+	struct pwrctrl_priv *pwrpriv = adapter_to_pwrctl(padapter);
+#endif //CONFIG_PLATFORM_SPRD	
+
+	rtw_hal_get_hwreg(padapter, HW_VAR_APFM_ON_MAC, &bMacPwrCtrlOn);
+	if(bMacPwrCtrlOn == _FALSE)
+	{
+		DBG_871X("=>%s bMacPwrCtrlOn == _FALSE return !!\n", __FUNCTION__);	
+		return;
+	}
+	DBG_871X("=>%s\n", __FUNCTION__);
+
+
+	//Stop Tx Report Timer. 0x4EC[Bit1]=b'0
+	u1bTmp = rtw_read8(padapter, REG_TX_RPT_CTRL);
+	rtw_write8(padapter, REG_TX_RPT_CTRL, u1bTmp&(~BIT1));
+	
+	// stop rx 
+	rtw_write8(padapter,REG_CR, 0x0);
+
+
+#ifdef CONFIG_EXT_CLK //for sprd For Power Consumption.
+	EnableGpio5ClockReq(padapter, _FALSE, 0);	
+#endif //CONFIG_EXT_CLK
+
+#if 1
+	// For Power Consumption.
+	u1bTmp = rtw_read8(padapter, GPIO_IN);
+	rtw_write8(padapter, GPIO_OUT, u1bTmp);
+	rtw_write8(padapter, GPIO_IO_SEL, 0xFF);//Reg0x46
+
+	u1bTmp = rtw_read8(padapter, REG_GPIO_IO_SEL);
+	rtw_write8(padapter, REG_GPIO_IO_SEL, (u1bTmp<<4)|u1bTmp);
+	u1bTmp = rtw_read8(padapter, REG_GPIO_IO_SEL+1);
+	rtw_write8(padapter, REG_GPIO_IO_SEL+1, u1bTmp|0x0F);//Reg0x43
+#endif
+
+
+	// Run LPS WL RFOFF flow	
+	ret = HalPwrSeqCmdParsing(padapter, PWR_CUT_ALL_MSK, PWR_FAB_ALL_MSK, PWR_INTF_SDIO_MSK, Rtl8188E_NIC_LPS_ENTER_FLOW);
+	if (ret == _FALSE) {
+		DBG_871X("%s: run RF OFF flow fail!\n", __func__);
+	}
+
+	//	==== Reset digital sequence   ======
+
+	u1bTmp = rtw_read8(padapter, REG_MCUFWDL);
+	if ((u1bTmp & RAM_DL_SEL) && padapter->bFWReady) //8051 RAM code
+	{
+		//rtl8723a_FirmwareSelfReset(padapter);
+		//_8051Reset88E(padapter);		
+		
+		// Reset MCU 0x2[10]=0.
+		u1bTmp = rtw_read8(padapter, REG_SYS_FUNC_EN+1);
+		u1bTmp &= ~BIT(2);	// 0x2[10], FEN_CPUEN
+		rtw_write8(padapter, REG_SYS_FUNC_EN+1, u1bTmp);
+	}	
+
+	//u1bTmp = rtw_read8(padapter, REG_SYS_FUNC_EN+1);
+	//u1bTmp &= ~BIT(2);	// 0x2[10], FEN_CPUEN
+	//rtw_write8(padapter, REG_SYS_FUNC_EN+1, u1bTmp);
+
+	// MCUFWDL 0x80[1:0]=0
+	// reset MCU ready status
+	rtw_write8(padapter, REG_MCUFWDL, 0);
+
+	//==== Reset digital sequence end ======
+	
+
+	bMacPwrCtrlOn = _FALSE;	// Disable CMD53 R/W
+	rtw_hal_set_hwreg(padapter, HW_VAR_APFM_ON_MAC, &bMacPwrCtrlOn);
+
+
+/*
+	if((pMgntInfo->RfOffReason & RF_CHANGE_BY_HW) && pHalData->pwrdown)
+	{// Power Down
+		
+		// Card disable power action flow
+		ret = HalPwrSeqCmdParsing(Adapter, PWR_CUT_ALL_MSK, PWR_FAB_ALL_MSK, PWR_INTF_SDIO_MSK, Rtl8188E_NIC_PDN_FLOW);	
+	}	
+	else
+*/	
+	{ // Non-Power Down
+
+		// Card disable power action flow
+		ret = HalPwrSeqCmdParsing(padapter, PWR_CUT_ALL_MSK, PWR_FAB_ALL_MSK, PWR_INTF_SDIO_MSK, Rtl8188E_NIC_DISABLE_FLOW);
+
+		 
+		if (ret == _FALSE) {
+			DBG_871X("%s: run CARD DISABLE flow fail!\n", __func__);
+		}
+	}
+
+
+/*
+	// Reset MCU IO Wrapper, added by Roger, 2011.08.30
+	u1bTmp = rtw_read8(padapter, REG_RSV_CTRL+1);
+	u1bTmp &= ~BIT(0);
+	rtw_write8(padapter, REG_RSV_CTRL+1, u1bTmp);
+	u1bTmp = rtw_read8(padapter, REG_RSV_CTRL+1);
+	u1bTmp |= BIT(0);
+	rtw_write8(padapter, REG_RSV_CTRL+1, u1bTmp);
+*/
+
+
+	// RSV_CTRL 0x1C[7:0]=0x0E
+	// lock ISO/CLK/Power control register
+	rtw_write8(padapter, REG_RSV_CTRL, 0x0E);
+
+	padapter->bFWReady = _FALSE;
+	bMacPwrCtrlOn = _FALSE;
+	rtw_hal_set_hwreg(padapter, HW_VAR_APFM_ON_MAC, &bMacPwrCtrlOn);
+	
+	DBG_871X("<=%s\n", __FUNCTION__);
+
+}
+
 //Tx Page FIFO threshold
 static void _init_available_page_threshold(PADAPTER padapter, u8 numHQ, u8 numNQ, u8 numLQ, u8 numPubQ)
 {
@@ -1111,12 +1236,15 @@ static u32 rtl8188es_hal_init(PADAPTER padapter)
 	HAL_DATA_TYPE		*pHalData = GET_HAL_DATA(padapter);
 	struct pwrctrl_priv		*pwrctrlpriv = adapter_to_pwrctl(padapter);
 	struct registry_priv	*pregistrypriv = &padapter->registrypriv;
+	struct pwrctrl_priv *pwrpriv = adapter_to_pwrctl(padapter);
 	u8 is92C = IS_92C_SERIAL(pHalData->VersionID);
 	rt_rf_power_state	eRfPowerStateToSet;
 	u8 value8;
 	u16 value16;
 
 	u32 init_start_time = rtw_get_current_time();
+	u8 cpwm_orig, cpwm_now, rpwm;
+	u32 start_time;
 
 #ifdef DBG_HAL_INIT_PROFILING
 	enum HAL_INIT_STAGES {
@@ -1217,6 +1345,51 @@ HAL_INIT_PROFILE_TAG(HAL_INIT_STAGES_BEGIN);
 		DBG_8192C("-Reset Entry-\n");
 	}
 #endif //CONFIG_WOWLAN
+
+	if(rtw_read8(padapter, REG_MCUFWDL) == 0xc6) {
+#ifdef CONFIG_LPS_LCLK
+		_enter_pwrlock(&pwrpriv->lock);
+		cpwm_orig = 0, rpwm = 0;
+		rtw_hal_get_hwreg(padapter, HW_VAR_CPWM, &cpwm_orig);
+
+		value8 = rtw_read8(padapter, SDIO_LOCAL_BASE | SDIO_REG_HRPWM1);
+		value8 &= 0x80;
+		value8 ^= BIT7;
+		rpwm = PS_STATE_S4 | PS_ACK | value8;
+		rtw_hal_set_hwreg(padapter, HW_VAR_SET_RPWM, (u8 *)(&rpwm));
+
+		start_time = rtw_get_current_time();
+		// polling cpwm
+		do {
+			rtw_mdelay_os(1);
+
+			rtw_hal_get_hwreg(padapter, HW_VAR_CPWM, &cpwm_now);
+			if ((cpwm_orig ^ cpwm_now) & 0x80)
+			{
+				DBG_871X("%s:Leave LPS done before PowerOn!!\n",
+						__func__);
+				break;
+			}
+
+			if (rtw_get_passing_time_ms(start_time) > LPS_RPWM_WAIT_MS)
+			{
+				if (rtw_read8(padapter, REG_CR) != 0xEA) {
+					DBG_871X("%s: polling cpwm timeout! but 0x100 != 0xEA!!\n",
+						__func__);
+				} else {
+					DBG_871X("%s, polling cpwm timeout and 0x100 = 0xEA!!\n",
+						__func__);
+				}
+				break;
+			}
+		} while (1);
+		_exit_pwrlock(&pwrpriv->lock);
+		
+		hal_poweroff_8188es(padapter);
+#endif
+	} else {
+		DBG_871X("FW does not exit before power on!!\n");
+	}
 
 HAL_INIT_PROFILE_TAG(HAL_INIT_STAGES_INIT_PW_ON);
 	ret = _InitPowerOn_8188ES(padapter);
@@ -1709,130 +1882,7 @@ HAL_INIT_PROFILE_TAG(HAL_INIT_STAGES_END);
 	
 }
 
-static void hal_poweroff_8188es(PADAPTER padapter)
-{
-	u8		u1bTmp;
-	u16		u2bTmp;
-	u32		u4bTmp;
-	u8		bMacPwrCtrlOn = _FALSE;
-	u8		ret;
 
-#ifdef CONFIG_PLATFORM_SPRD
-	struct pwrctrl_priv *pwrpriv = adapter_to_pwrctl(padapter);
-#endif //CONFIG_PLATFORM_SPRD	
-
-	rtw_hal_get_hwreg(padapter, HW_VAR_APFM_ON_MAC, &bMacPwrCtrlOn);
-	if(bMacPwrCtrlOn == _FALSE)
-	{
-		DBG_871X("=>%s bMacPwrCtrlOn == _FALSE return !!\n", __FUNCTION__);	
-		return;
-	}
-	DBG_871X("=>%s\n", __FUNCTION__);
-
-
-	//Stop Tx Report Timer. 0x4EC[Bit1]=b'0
-	u1bTmp = rtw_read8(padapter, REG_TX_RPT_CTRL);
-	rtw_write8(padapter, REG_TX_RPT_CTRL, u1bTmp&(~BIT1));
-	
-	// stop rx 
-	rtw_write8(padapter,REG_CR, 0x0);
-
-
-#ifdef CONFIG_EXT_CLK //for sprd For Power Consumption.
-	EnableGpio5ClockReq(padapter, _FALSE, 0);	
-#endif //CONFIG_EXT_CLK
-
-#if 1
-	// For Power Consumption.
-	u1bTmp = rtw_read8(padapter, GPIO_IN);
-	rtw_write8(padapter, GPIO_OUT, u1bTmp);
-	rtw_write8(padapter, GPIO_IO_SEL, 0xFF);//Reg0x46
-
-	u1bTmp = rtw_read8(padapter, REG_GPIO_IO_SEL);
-	rtw_write8(padapter, REG_GPIO_IO_SEL, (u1bTmp<<4)|u1bTmp);
-	u1bTmp = rtw_read8(padapter, REG_GPIO_IO_SEL+1);
-	rtw_write8(padapter, REG_GPIO_IO_SEL+1, u1bTmp|0x0F);//Reg0x43
-#endif
-
-
-	// Run LPS WL RFOFF flow	
-	ret = HalPwrSeqCmdParsing(padapter, PWR_CUT_ALL_MSK, PWR_FAB_ALL_MSK, PWR_INTF_SDIO_MSK, Rtl8188E_NIC_LPS_ENTER_FLOW);
-	if (ret == _FALSE) {
-		DBG_871X("%s: run RF OFF flow fail!\n", __func__);
-	}
-
-	//	==== Reset digital sequence   ======
-
-	u1bTmp = rtw_read8(padapter, REG_MCUFWDL);
-	if ((u1bTmp & RAM_DL_SEL) && padapter->bFWReady) //8051 RAM code
-	{
-		//rtl8723a_FirmwareSelfReset(padapter);
-		//_8051Reset88E(padapter);		
-		
-		// Reset MCU 0x2[10]=0.
-		u1bTmp = rtw_read8(padapter, REG_SYS_FUNC_EN+1);
-		u1bTmp &= ~BIT(2);	// 0x2[10], FEN_CPUEN
-		rtw_write8(padapter, REG_SYS_FUNC_EN+1, u1bTmp);
-	}	
-
-	//u1bTmp = rtw_read8(padapter, REG_SYS_FUNC_EN+1);
-	//u1bTmp &= ~BIT(2);	// 0x2[10], FEN_CPUEN
-	//rtw_write8(padapter, REG_SYS_FUNC_EN+1, u1bTmp);
-
-	// MCUFWDL 0x80[1:0]=0
-	// reset MCU ready status
-	rtw_write8(padapter, REG_MCUFWDL, 0);
-
-	//==== Reset digital sequence end ======
-	
-
-	bMacPwrCtrlOn = _FALSE;	// Disable CMD53 R/W
-	rtw_hal_set_hwreg(padapter, HW_VAR_APFM_ON_MAC, &bMacPwrCtrlOn);
-
-
-/*
-	if((pMgntInfo->RfOffReason & RF_CHANGE_BY_HW) && pHalData->pwrdown)
-	{// Power Down
-		
-		// Card disable power action flow
-		ret = HalPwrSeqCmdParsing(Adapter, PWR_CUT_ALL_MSK, PWR_FAB_ALL_MSK, PWR_INTF_SDIO_MSK, Rtl8188E_NIC_PDN_FLOW);	
-	}	
-	else
-*/	
-	{ // Non-Power Down
-
-		// Card disable power action flow
-		ret = HalPwrSeqCmdParsing(padapter, PWR_CUT_ALL_MSK, PWR_FAB_ALL_MSK, PWR_INTF_SDIO_MSK, Rtl8188E_NIC_DISABLE_FLOW);
-
-		 
-		if (ret == _FALSE) {
-			DBG_871X("%s: run CARD DISABLE flow fail!\n", __func__);
-		}
-	}
-
-
-/*
-	// Reset MCU IO Wrapper, added by Roger, 2011.08.30
-	u1bTmp = rtw_read8(padapter, REG_RSV_CTRL+1);
-	u1bTmp &= ~BIT(0);
-	rtw_write8(padapter, REG_RSV_CTRL+1, u1bTmp);
-	u1bTmp = rtw_read8(padapter, REG_RSV_CTRL+1);
-	u1bTmp |= BIT(0);
-	rtw_write8(padapter, REG_RSV_CTRL+1, u1bTmp);
-*/
-
-
-	// RSV_CTRL 0x1C[7:0]=0x0E
-	// lock ISO/CLK/Power control register
-	rtw_write8(padapter, REG_RSV_CTRL, 0x0E);
-
-	padapter->bFWReady = _FALSE;
-	bMacPwrCtrlOn = _FALSE;
-	rtw_hal_set_hwreg(padapter, HW_VAR_APFM_ON_MAC, &bMacPwrCtrlOn);
-	
-	DBG_871X("<=%s\n", __FUNCTION__);
-
-}
 
 static u32 rtl8188es_hal_deinit(PADAPTER padapter)
 {
@@ -3872,7 +3922,7 @@ GetHalDefVar8188ESDIO(
 			break;		
 
 		case HW_VAR_MAX_RX_AMPDU_FACTOR:
-			*(( u32*)pValue) = MAX_AMPDU_FACTOR_16K;
+			*(HT_CAP_AMPDU_FACTOR*)pValue = MAX_AMPDU_FACTOR_16K;
 			break;
 
 		case HAL_DEF_TX_LDPC:

@@ -784,6 +784,7 @@ struct wlan_network *rtw_find_same_network(_queue *scanned_queue, struct wlan_ne
 extern void rtw_free_assoc_resources(_adapter* adapter, int lock_scanned_queue);
 extern void rtw_indicate_disconnect(_adapter* adapter);
 extern void rtw_indicate_connect(_adapter* adapter);
+extern void rtw_free_network_nolock(_adapter* adapter, struct wlan_network *pnetwork );
 void rtw_indicate_scan_done( _adapter *padapter, bool aborted);
 void rtw_scan_abort(_adapter *adapter);
 

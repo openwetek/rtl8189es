@@ -104,10 +104,11 @@ CONFIG_PLATFORM_ACTIONS_ATV5201 = n
 CONFIG_PLATFORM_ARM_RTD299X = n
 CONFIG_PLATFORM_ARM_SPREADTRUM_6820 = n
 CONFIG_PLATFORM_ARM_SPREADTRUM_8810 = n
+CONFIG_PLATFORM_ARM_WMT = n
+###############################################################
 CONFIG_PLATFORM_AML = y
 CONFIG_RTL8189ES = m
 CONFIG_DEBUG_RTL871X = n
-
 
 CONFIG_DRVEXT_MODULE = n
 
@@ -769,8 +770,8 @@ ifeq ($(CONFIG_SDIO_HCI), y)
 _PLATFORM_FILES += platform/platform_ARM_WMT_sdio.o
 endif
 ARCH := arm
-CROSS_COMPILE := /home/isaac/WonderMedia/toolchain/arm_201103_gcc4.5.2/mybin/arm_1103_le-
-KSRC := /home/isaac/WonderMedia/wm8880-android4.4/kernel4.4/
+CROSS_COMPILE := arm_1103_le-
+KSRC := $(shell pwd)/../../../../
 MODULE_NAME :=8189es_kk
 endif
 
@@ -1199,7 +1200,7 @@ EXTRA_CFLAGS += -DCONFIG_TRAFFIC_PROTECT
 EXTRA_CFLAGS += -DCONFIG_CONCURRENT_MODE
 EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211 -DRTW_USE_CFG80211_STA_EVENT
 EXTRA_CFLAGS += -DCONFIG_P2P_IPS
-EXTRA_CFLAGS += -DCONFIG_RESUME_IN_WORKQUEUE
+
 EXTRA_CFLAGS += -DCONFIG_PLATFORM_OPS
 ifeq ($(CONFIG_USB_HCI), y)
 EXTRA_CFLAGS += -DCONFIG_USE_USB_BUFFER_ALLOC_TX
@@ -1345,8 +1346,10 @@ export CONFIG_RTL8189ES = m
 
 all: modules
 
+ANDROID_PRODUCT_OUT = ../../../../../../out/target/product/m102
 modules:
-	$(MAKE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) -C $(KSRC) M=$(shell pwd)  modules
+#	$(MAKE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) -C $(KSRC) M=$(shell pwd)  modules
+	$(MAKE) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) -C $(ANDROID_PRODUCT_OUT)/obj/KERNEL_OBJ/ M=$(shell pwd)  modules
 
 strip:
 	$(CROSS_COMPILE)strip $(MODULE_NAME).ko --strip-unneeded

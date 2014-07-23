@@ -543,13 +543,16 @@ _func_enter_;
 _func_exit_;		
 }
 
-void rtw_free_network_nolock(struct mlme_priv *pmlmepriv, struct wlan_network *pnetwork );
-void rtw_free_network_nolock(struct mlme_priv *pmlmepriv, struct wlan_network *pnetwork )
+void rtw_free_network_nolock(_adapter * padapter, struct wlan_network *pnetwork );
+void rtw_free_network_nolock(_adapter * padapter, struct wlan_network *pnetwork )
 {
-_func_enter_;		
+_func_enter_;
 	//RT_TRACE(_module_rtl871x_mlme_c_,_drv_err_,("rtw_free_network==> ssid = %s \n\n" , pnetwork->network.Ssid.Ssid));
-	_rtw_free_network_nolock(pmlmepriv, pnetwork);
-_func_exit_;		
+	_rtw_free_network_nolock(&(padapter->mlmepriv), pnetwork);
+#ifdef CONFIG_IOCTL_CFG80211
+	rtw_cfg80211_unlink_bss(padapter, pnetwork);
+#endif //CONFIG_IOCTL_CFG80211
+_func_exit_;
 }
 
 
@@ -1554,7 +1557,7 @@ _func_enter_;
 	if((check_fwstate(pmlmepriv, WIFI_ADHOC_MASTER_STATE) && (adapter->stapriv.asoc_sta_count== 1))
 		/*||check_fwstate(pmlmepriv, WIFI_STATION_STATE)*/)
 	{
-		rtw_free_network_nolock(pmlmepriv, pwlan); 
+		rtw_free_network_nolock(adapter, pwlan); 
 	}
 
 	if(lock_scanned_queue)
@@ -2490,7 +2493,7 @@ _func_enter_;
 		pwlan = rtw_find_network(&pmlmepriv->scanned_queue, tgt_network->network.MacAddress);	
 		if (pwlan) {			
 			pwlan->fixed = _FALSE;
-			rtw_free_network_nolock(pmlmepriv, pwlan);
+			rtw_free_network_nolock(adapter, pwlan);
 		}
 		_exit_critical_bh(&(pmlmepriv->scanned_queue.lock), &irqL);
 
@@ -2520,7 +2523,7 @@ _func_enter_;
 			if(pwlan)	
 			{
 				pwlan->fixed = _FALSE;
-				rtw_free_network_nolock(pmlmepriv, pwlan); 
+				rtw_free_network_nolock(adapter, pwlan); 
 			}
 			_exit_critical_bh(&(pmlmepriv->scanned_queue.lock), &irqL);
 			//re-create ibss

@@ -785,6 +785,7 @@ s32 PHY_MACConfig8188E(PADAPTER Adapter)
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(Adapter);
 	s8			*pszMACRegFile;
 	s8			sz8188EMACRegFile[] = RTL8188E_PHY_MACREG;
+	u16		val=0;
 
 	pszMACRegFile = sz8188EMACRegFile;
 
@@ -805,7 +806,10 @@ s32 PHY_MACConfig8188E(PADAPTER Adapter)
 	}
 
 	// 2010.07.13 AMPDU aggregation number B
-	rtw_write8(Adapter, REG_MAX_AGGR_NUM, MAX_AGGR_NUM);
+	val |= MAX_AGGR_NUM;
+	val = val << 8;
+	val |= MAX_AGGR_NUM;
+	rtw_write16(Adapter, REG_MAX_AGGR_NUM, val);
 	//rtw_write8(Adapter, REG_MAX_AGGR_NUM, 0x0B); 
 
 	return rtStatus;

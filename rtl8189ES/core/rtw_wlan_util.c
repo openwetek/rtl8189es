@@ -37,8 +37,7 @@ unsigned char MARVELL_OUI[] = {0x00, 0x50, 0x43};
 unsigned char RALINK_OUI[] = {0x00, 0x0c, 0x43};
 unsigned char REALTEK_OUI[] = {0x00, 0xe0, 0x4c};
 unsigned char AIRGOCAP_OUI[] = {0x00, 0x0a, 0xf5};
-
-unsigned char TPLINK_OUI[] = {0x00, 0x0a, 0xeb};
+unsigned char TPLINK_745N_OUI[] = {0x00, 0x0a, 0xeb};
 
 unsigned char REALTEK_96B_IE[] = {0x00, 0xe0, 0x4c, 0x02, 0x01, 0x20};
 
@@ -2745,10 +2744,11 @@ unsigned char check_assoc_AP(u8 *pframe, uint len)
 					DBG_871X("link to Airgo Cap\n");
 					return HT_IOT_PEER_AIRGO;
 				}
-				else if (_rtw_memcmp(pIE->data, TPLINK_OUI, 3))
+				else if (_rtw_memcmp(pIE->data, TPLINK_745N_OUI,3))
 				{
-					DBG_871X("link to TP-LINK WR740N\n");
-					return HT_IOT_PEER_ATHEROS;
+					DBG_871X("%s link to TP-LINK 745N\n",
+							__func__);
+					return HT_IOT_PEER_TPLINK_745N;
 				}
 				else
 				{

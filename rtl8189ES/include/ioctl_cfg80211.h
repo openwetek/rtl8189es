@@ -117,6 +117,7 @@ void rtw_wdev_unregister(struct wireless_dev *wdev);
 
 void rtw_cfg80211_init_wiphy(_adapter *padapter);
 
+void rtw_cfg80211_unlink_bss(_adapter *padapter, struct wlan_network *pnetwork);
 void rtw_cfg80211_surveydone_event_callback(_adapter *padapter);
 struct cfg80211_bss *rtw_cfg80211_inform_bss(_adapter *padapter, struct wlan_network *pnetwork);
 int rtw_cfg80211_check_bss(_adapter *padapter);
