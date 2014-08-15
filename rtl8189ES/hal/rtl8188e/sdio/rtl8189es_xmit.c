@@ -951,26 +951,31 @@ static s32 xmit_xmitframes(PADAPTER padapter, struct xmit_priv *pxmitpriv)
 
 				pxmitframe = LIST_CONTAINOR(xmitframe_plist, struct xmit_frame, list);
 
-				// check xmit_buf size enough or not
-				txlen = TXDESC_SIZE +
-				#ifdef CONFIG_TX_EARLY_MODE	
-					EARLY_MODE_INFO_SIZE +
-				#endif
-					rtw_wlan_pkt_size(pxmitframe);
-
-				if ((pbuf + txlen) > max_xmit_len)
-				{
+				if(_FAIL == rtw_hal_busagg_qsel_check(padapter,pfirstframe->attrib.qsel,pxmitframe->attrib.qsel)){
 					bulkstart = _TRUE;
 				}
-				else
-				{
-					rtw_list_delete(&pxmitframe->list);
-					ptxservq->qcnt--;
-					phwxmit[ac_index].accnt--;
+				else{
+					// check xmit_buf size enough or not
+					txlen = TXDESC_SIZE +
+					#ifdef CONFIG_TX_EARLY_MODE	
+						EARLY_MODE_INFO_SIZE +
+					#endif
+						rtw_wlan_pkt_size(pxmitframe);
 
-					//Remove sta node when there is no pending packets.
-					if (_rtw_queue_empty(&ptxservq->sta_pending) == _TRUE)
-						rtw_list_delete(&ptxservq->tx_pending);
+					if ((pbuf + txlen) > max_xmit_len)
+					{
+						bulkstart = _TRUE;
+					}
+					else
+					{
+						rtw_list_delete(&pxmitframe->list);
+						ptxservq->qcnt--;
+						phwxmit[ac_index].accnt--;
+
+						//Remove sta node when there is no pending packets.
+						if (_rtw_queue_empty(&ptxservq->sta_pending) == _TRUE)
+							rtw_list_delete(&ptxservq->tx_pending);
+					}
 				}
 			}
 			else
@@ -1106,7 +1111,7 @@ static s32 xmit_xmitframes(PADAPTER padapter, struct xmit_priv *pxmitpriv)
 	u32 txlen, max_xmit_len;
 	s32 ret;
 	int inx[4];
-
+	u8 pre_qsel=0xFF,next_qsel=0xFF;
 	err = 0;
 	hwxmits = pxmitpriv->hwxmits;
 	hwentry = pxmitpriv->hwxmit_entry;
@@ -1166,9 +1171,13 @@ static s32 xmit_xmitframes(PADAPTER padapter, struct xmit_priv *pxmitpriv)
 				#else
 				txlen = TXDESC_SIZE + rtw_wlan_pkt_size(pxmitframe);
 				#endif
+
+				next_qsel = pxmitframe->attrib.qsel;
+				
 				if ((NULL == pxmitbuf) ||
 					((_RND(pxmitbuf->len, 8) + txlen) > max_xmit_len)
 					|| (agg_num>= (rtw_hal_sdio_max_txoqt_free_space(padapter)-1))		
+					|| ((agg_num!=0) && (_FAIL == rtw_hal_busagg_qsel_check(padapter,pre_qsel,next_qsel)))
 				)
 				{
 					if (pxmitbuf) {
@@ -1234,6 +1243,7 @@ static s32 xmit_xmitframes(PADAPTER padapter, struct xmit_priv *pxmitpriv)
 					agg_num++;
 					if (agg_num != 1)
 						rtl8188es_update_txdesc(pxmitframe, pxmitframe->buf_addr);
+					pre_qsel = pxmitframe->attrib.qsel;
 					rtw_count_tx_stats(padapter, pxmitframe, pxmitframe->attrib.last_txcmdsz);
 					#ifdef CONFIG_TX_EARLY_MODE		
 					txlen = TXDESC_SIZE+ EARLY_MODE_INFO_SIZE+ pxmitframe->attrib.last_txcmdsz;
@@ -1353,13 +1363,20 @@ next:
 
 	ret = xmit_xmitframes(padapter, pxmitpriv);
 	if (ret == -2) {
+#ifdef CONFIG_REDUCE_TX_CPU_LOADING 
+		rtw_msleep_os(1);
+#else
 		rtw_yield_os();
+#endif
 		goto next;
 	}
 	_enter_critical_bh(&pxmitpriv->lock, &irql);
 	ret = rtw_txframes_pending(padapter);
 	_exit_critical_bh(&pxmitpriv->lock, &irql);
 	if (ret == 1) {
+#ifdef CONFIG_REDUCE_TX_CPU_LOADING 
+		rtw_msleep_os(1);
+#endif
 		goto next;
 	}
 

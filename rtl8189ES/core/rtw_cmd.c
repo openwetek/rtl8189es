@@ -431,6 +431,9 @@ _func_exit_;
 
 void rtw_stop_cmd_thread(_adapter *adapter)
 {
+	struct cmd_priv *pcmdpriv = &(adapter->cmdpriv);
+	u8 res;
+
 	if(adapter->cmdThread &&
 		ATOMIC_READ(&(adapter->cmdpriv.cmdthd_running)) == _TRUE &&
 		adapter->cmdpriv.stop_req == 0)
@@ -442,7 +445,6 @@ void rtw_stop_cmd_thread(_adapter *adapter)
 			__func__,
 			adapter->cmdpriv.terminate_cmdthread_sema.count);
 		_rtw_down_sema(&adapter->cmdpriv.terminate_cmdthread_sema);
-		kthread_stop(adapter->cmdThread);
 	}
 }
 
@@ -641,7 +643,6 @@ post_process:
 	}while(1);
 
 	_rtw_up_sema(&pcmdpriv->terminate_cmdthread_sema);
-	ATOMIC_SET(&(pcmdpriv->cmdthd_running), _FALSE);
 
 _func_exit_;
 	thread_exit();

@@ -326,6 +326,6 @@ void rtw_dump_raw_rssi_info(_adapter *padapter);
 #ifdef CONFIG_RF_GAIN_OFFSET
 void rtw_bb_rf_gain_offset(_adapter *padapter);
 #endif //CONFIG_RF_GAIN_OFFSET
-
+u8 rtw_hal_busagg_qsel_check(_adapter *padapter,u8 pre_qsel,u8 next_qsel);
 #endif //__HAL_COMMON_H__
 

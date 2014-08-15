@@ -905,6 +905,7 @@ u32 rtw_start_drv_threads(_adapter *padapter)
 
 void rtw_stop_drv_threads (_adapter *padapter)
 {
+	u8 res = 0;
 	RT_TRACE(_module_os_intfs_c_,_drv_info_,("+rtw_stop_drv_threads\n"));
 
 #ifdef CONFIG_CONCURRENT_MODE
@@ -930,8 +931,6 @@ void rtw_stop_drv_threads (_adapter *padapter)
 	{
 	_rtw_up_sema(&padapter->xmitpriv.xmit_sema);
 	_rtw_down_sema(&padapter->xmitpriv.terminate_xmitthread_sema);
-	if(padapter->xmitThread)
-		kthread_stop(padapter->xmitThread);
 	}
 	RT_TRACE(_module_os_intfs_c_,_drv_info_,("\n drv_halt: rtw_xmit_thread can be terminated ! \n"));
 #endif

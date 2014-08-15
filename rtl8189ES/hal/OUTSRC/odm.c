@@ -2158,6 +2158,8 @@ odm_Adaptivity(
 	s1Byte TH_L2H_dmc, TH_H2L_dmc;
 	s1Byte Diff, IGI_target;
 	BOOLEAN EDCCA_State = 0;
+	BOOLEAN isInterference = 0;
+	u4Byte	value32 = 0;
 
 #if (DM_ODM_SUPPORT_TYPE == ODM_WIN)
 	PADAPTER		pAdapter	= pDM_Odm->Adapter;
@@ -2190,8 +2192,18 @@ odm_Adaptivity(
 
 	if(pDM_Odm->SupportICType & ODM_IC_11AC_SERIES)
 		ODM_SetBBReg(pDM_Odm, 0x800, BIT10, 0); //ADC_mask enable
-	
-	if((!pDM_Odm->bLinked)||(*pDM_Odm->pChannel > 149)) // Band4 doesn't need adaptivity
+
+	if (pDM_Odm->SupportICType & ODM_IC_11N_SERIES) {
+		ODM_SetBBReg(pDM_Odm, 0x908, bMaskDWord, 0x208);
+		value32 = ODM_GetBBReg(pDM_Odm, 0xdf4, bMaskDWord);
+	}
+
+	if (value32 & BIT30)
+		isInterference = TRUE;
+	else
+		isInterference = FALSE;
+
+	if(((!pDM_Odm->bLinked) && (!isInterference)) || (*pDM_Odm->pChannel >= 149)) // Band4 doesn't need adaptivity
 	{
 		if(pDM_Odm->SupportICType & ODM_IC_11N_SERIES)
 		{

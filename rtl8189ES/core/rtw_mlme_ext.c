@@ -1953,12 +1953,17 @@ unsigned int OnAssocReq(_adapter *padapter, union recv_frame *precv_frame)
 	p = rtw_get_ie(pframe + WLAN_HDR_A3_LEN + ie_offset, _SUPPORTEDRATES_IE_, &ie_len, pkt_len - WLAN_HDR_A3_LEN - ie_offset);
 	if (p == NULL) {
 		DBG_871X("Rx a sta assoc-req which supported rate is empty!\n");
+#ifdef CONFIG_SOFTAP_NO_CHECK_SUPPORT_RATE
+		supportRateNum = rtw_get_rateset_len(cur->SupportedRates);
+		_rtw_memcpy(supportRate, cur->SupportedRates, supportRateNum);
+#else
 		// use our own rate set as statoin used
 		//_rtw_memcpy(supportRate, AP_BSSRATE, AP_BSSRATE_LEN);
 		//supportRateNum = AP_BSSRATE_LEN;
 		
 		status = _STATS_FAILURE_;
 		goto OnAssocReqFail;
+#endif
 	}
 	else {
 		_rtw_memcpy(supportRate, p+2, ie_len);

@@ -1800,3 +1800,23 @@ void rtw_bb_rf_gain_offset(_adapter *padapter)
 }
 #endif //CONFIG_RF_GAIN_OFFSET
 
+//bus-agg check for SoftAP mode
+inline u8 rtw_hal_busagg_qsel_check(_adapter *padapter,u8 pre_qsel,u8 next_qsel)
+{
+	struct mlme_priv *pmlmepriv = &(padapter->mlmepriv);
+	u8 chk_rst = _SUCCESS;
+	
+	if(check_fwstate(pmlmepriv, WIFI_AP_STATE) != _TRUE)
+		return chk_rst;
+
+	//if((pre_qsel == 0xFF)||(next_qsel== 0xFF)) 
+	//	return chk_rst;
+	
+	if(	((pre_qsel == QSLT_HIGH)||((next_qsel== QSLT_HIGH))) 
+			&& (pre_qsel != next_qsel )){
+			//DBG_871X("### bus-agg break cause of qsel misatch, pre_qsel=0x%02x,next_qsel=0x%02x ###\n",
+			//	pre_qsel,next_qsel);
+			chk_rst = _FAIL;
+		}
+	return chk_rst;
+}

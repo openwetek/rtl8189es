@@ -2840,12 +2840,12 @@ void rtl8188e_stop_thread(_adapter *padapter)
 #ifdef CONFIG_SDIO_HCI
 #ifndef CONFIG_SDIO_TX_TASKLET
 	struct xmit_priv *xmitpriv = &padapter->xmitpriv;
+	u8 res = 0;
 
 	// stop xmit_buf_thread
 	if (xmitpriv->SdioXmitThread ) {
 		_rtw_up_sema(&xmitpriv->SdioXmitSema);
 		_rtw_down_sema(&xmitpriv->SdioXmitTerminateSema);
-		kthread_stop(xmitpriv->SdioXmitThread);
 		xmitpriv->SdioXmitThread = 0;
 	}
 #endif

@@ -3895,6 +3895,15 @@ GetHalDefVar8188ESDIO(
 			*(( u8*)pValue) = pHalData->CurAntenna;
 #endif
 			break;
+		case HAL_DEF_DRVINFO_SZ:
+			*(( u32*)pValue) = DRVINFO_SZ;
+			break;	
+		case HAL_DEF_MAX_RECVBUF_SZ:
+			*(( u32*)pValue) = MAX_RECVBUF_SZ;
+			break;
+		case HAL_DEF_RX_PACKET_OFFSET:
+			*(( u32*)pValue) = RXDESC_SIZE + DRVINFO_SZ;
+			break;	
 #if (RATE_ADAPTIVE_SUPPORT == 1)
 		case HAL_DEF_RA_DECISION_RATE:
 			{
