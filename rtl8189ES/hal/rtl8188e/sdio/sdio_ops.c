@@ -1221,6 +1221,33 @@ DumpHardwareProfile8723Sdio(
 }
 #endif
 
+static s32 ReadInterrupt8188Sdio(PADAPTER padapter, u32 *phisr) {
+	u32 hisr, himr;
+	u8 val8, hisr_len;
+	
+	if (phisr == NULL)
+		return _FALSE;
+	
+	himr = GET_HAL_DATA(padapter)->sdio_himr;
+	// decide how many bytes need to be read
+	hisr_len = 0;
+	while (himr) {
+		hisr_len++;
+		himr >>= 8;
+	}
+
+	hisr = 0;
+	while (hisr_len != 0) {
+		hisr_len--;
+		val8 = SdioLocalCmd52Read1Byte(padapter,
+				SDIO_REG_HISR+hisr_len);
+		hisr |= (val8 << (8*hisr_len));
+	}
+
+	*phisr = hisr;
+	return _TRUE;
+}
+
 //
 //	Description:
 //		Initialize SDIO Host Interrupt Mask configuration variables for future use.
@@ -1631,8 +1658,8 @@ void sd_int_dpc(PADAPTER padapter)
 		u8 bcancelled;
 		_cancel_timer(&(adapter_to_pwrctl(padapter)->pwr_rpwm_timer), &bcancelled);
 #endif // CONFIG_LPS_RPWM_TIMER
-
-		_sdio_local_read(padapter, SDIO_REG_HCPWM1, 1, &report.state);
+		report.state =
+			SdioLocalCmd52Read1Byte(padapter, SDIO_REG_HCPWM1);
 #ifdef CONFIG_LPS_LCLK
 		//88e's cpwm value only change BIT0, so driver need to add PS_STATE_S2 for LPS flow.
 		//modify by Thomas. 2012/4/2.
@@ -1774,61 +1801,67 @@ void sd_int_dpc(PADAPTER padapter)
 	if (pHalData->sdio_hisr & SDIO_HISR_RX_REQUEST)
 	{
 		struct recv_buf *precvbuf;
+		int alloc_fail_time = 0;
+		u32 hisr;
 
 		//DBG_8192C("%s: RX Request, size=%d\n", __func__, phal->SdioRxFIFOSize);
 		pHalData->sdio_hisr ^= SDIO_HISR_RX_REQUEST;
-#ifdef CONFIG_MAC_LOOPBACK_DRIVER
-		sd_recv_loopback(padapter, pHalData->SdioRxFIFOSize);
-#else
 		do {
+			pHalData->SdioRxFIFOSize =
+				SdioLocalCmd52Read2Byte(padapter,
+						SDIO_REG_RX0_REQ_LEN);
 			//Sometimes rx length will be zero. driver need to use cmd53 read again.
-			if(pHalData->SdioRxFIFOSize == 0)
-			{
-				u8 data[4];
-
-				_sdio_local_read(padapter, SDIO_REG_RX0_REQ_LEN, 4, data);
-
-				pHalData->SdioRxFIFOSize = le16_to_cpu(*(u16*)data);
-			}
-
-			if(pHalData->SdioRxFIFOSize)
-			{
-				precvbuf = sd_recv_rxfifo(padapter, pHalData->SdioRxFIFOSize);
-
-				pHalData->SdioRxFIFOSize = 0;
-
-				if (precvbuf)
-					sd_rxhandler(padapter, precvbuf);
-				else
-					break;
-			}
-			else
-				break;
-#ifdef CONFIG_SDIO_DISABLE_RXFIFO_POLLING_LOOP			
-		} while (0);
+			if(pHalData->SdioRxFIFOSize != 0) {
+#ifdef CONFIG_MAC_LOOPBACK_DRIVER
+				sd_recv_loopback(padapter,
+						pHalData->SdioRxFIFOSize);
 #else
-		} while (1);
+				precvbuf = sd_recv_rxfifo(padapter,
+						pHalData->SdioRxFIFOSize);
+				if (precvbuf) {
+					sd_rxhandler(padapter, precvbuf);
+				} else {
+					alloc_fail_time++;
+					DBG_871X("precvbuf is Null for %d times because alloc memory failed\n",
+							alloc_fail_time);
+					if (alloc_fail_time >= 10)
+						break;
+				}
+				pHalData->SdioRxFIFOSize = 0;
 #endif
-#endif
+			} else {
+				break;
+			}
 
+			hisr = 0;
+			ReadInterrupt8188Sdio(padapter, &hisr);
+			hisr &= SDIO_HISR_RX_REQUEST;
+			if (!hisr)
+				break;
+		} while (1);
+
+		if(alloc_fail_time==10)
+			DBG_871X("exit because alloc memory failed more than 10 times \n");
 	}
-	
 }
 
 void sd_int_hdl(PADAPTER padapter)
 {
-	u8 data[6];
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
+
 	if ((padapter->bDriverStopped == _TRUE) ||
 	    (padapter->bSurpriseRemoved == _TRUE))
 		return;
-
+#if 0
+	u8 data[6];
 	_sdio_local_read(padapter, SDIO_REG_HISR, 6, data);
 	pHalData->sdio_hisr = le32_to_cpu(*(u32*)data);
 	pHalData->SdioRxFIFOSize = le16_to_cpu(*(u16*)&data[4]);
+#else
+	ReadInterrupt8188Sdio(padapter, &pHalData->sdio_hisr);
+#endif
 
-	if (pHalData->sdio_hisr & pHalData->sdio_himr)
-	{
+	if (pHalData->sdio_hisr & pHalData->sdio_himr) {
 		u32 v32;
 
 		pHalData->sdio_hisr &= pHalData->sdio_himr;
@@ -1836,15 +1869,12 @@ void sd_int_hdl(PADAPTER padapter)
 		// clear HISR
 		v32 = pHalData->sdio_hisr & MASK_SDIO_HISR_CLEAR;
 		if (v32) {
-			v32 = cpu_to_le32(v32);
-			_sdio_local_write(padapter, SDIO_REG_HISR, 4, (u8*)&v32);
+			SdioLocalCmd52Write4Byte(padapter, SDIO_REG_HISR, v32);
 		}
 
 		sd_int_dpc(padapter);
 		
-	} 
-	else 
-	{
+	} else {
 		RT_TRACE(_module_hci_ops_c_, _drv_err_,
 				("%s: HISR(0x%08x) and HIMR(0x%08x) not match!\n",
 				__FUNCTION__, pHalData->sdio_hisr, pHalData->sdio_himr));
