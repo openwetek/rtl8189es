@@ -39,7 +39,7 @@ CONFIG_SDIO_HCI = y
 CONFIG_GSPI_HCI = n
 ########################## Features ###########################
 CONFIG_MP_INCLUDED = y
-CONFIG_POWER_SAVING = n
+CONFIG_POWER_SAVING = y
 CONFIG_USB_AUTOSUSPEND = n
 CONFIG_HW_PWRP_DETECTION = n
 CONFIG_WIFI_TEST = n
@@ -1203,6 +1203,7 @@ ifeq ($(CONFIG_PLATFORM_AML), y)
 EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN -fno-pic
 EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211 -DCONFIG_CONCURRENT_MODE
 EXTRA_CFLAGS += -DCONFIG_P2P_IPS -DRTW_USE_CFG80211_STA_EVENT
+EXTRA_CFLAGS += -DCONFIG_LPS_SLOW_TRANSITION
 ARCH := arm
 #CROSS_COMPILE := /media/pc-work/work/sdk/amlogic/jb-amlogic-mid/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.6/bin/arm-linux-androideabi-
 KVER := 
