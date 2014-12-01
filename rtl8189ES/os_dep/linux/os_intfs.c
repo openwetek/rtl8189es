@@ -763,7 +763,7 @@ void rtw_ndev_notifier_unregister(void)
 int rtw_ndev_init(struct net_device *dev)
 {
 	_adapter *adapter = rtw_netdev_priv(dev);
-        printk("driver version:2014/10/08\n");
+        printk("driver version:2014/10/08 cmd53\n");
 	DBG_871X_LEVEL(_drv_always_, FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(adapter));
 	strncpy(adapter->old_ifname, dev->name, IFNAMSIZ);
 	rtw_adapter_proc_init(dev);

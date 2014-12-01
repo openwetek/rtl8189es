@@ -2486,7 +2486,7 @@ u8 traffic_status_watchdog(_adapter *padapter, u8 from_timer)
 #endif //CONFIG_LPS_SLOW_TRANSITION
 			)
 		{
-			DBG_871X("(-)Tx = %d, Rx = %d \n",pmlmepriv->LinkDetectInfo.NumTxOkInPeriod,pmlmepriv->LinkDetectInfo.NumRxUnicastOkInPeriod);
+			//DBG_871X("(-)Tx = %d, Rx = %d \n",pmlmepriv->LinkDetectInfo.NumTxOkInPeriod,pmlmepriv->LinkDetectInfo.NumRxUnicastOkInPeriod);
 			bEnterPS= _FALSE;
 #ifdef CONFIG_LPS_SLOW_TRANSITION
 			if(bBusyTraffic == _TRUE)
@@ -2508,7 +2508,7 @@ u8 traffic_status_watchdog(_adapter *padapter, u8 from_timer)
 		}
 		else
 		{
-			DBG_871X("(+)Tx = %d, Rx = %d \n",pmlmepriv->LinkDetectInfo.NumTxOkInPeriod,pmlmepriv->LinkDetectInfo.NumRxUnicastOkInPeriod);
+			//DBG_871X("(+)Tx = %d, Rx = %d \n",pmlmepriv->LinkDetectInfo.NumTxOkInPeriod,pmlmepriv->LinkDetectInfo.NumRxUnicastOkInPeriod);
 #ifdef CONFIG_LPS_SLOW_TRANSITION
 			if(pmlmepriv->LinkDetectInfo.TrafficTransitionCount>=2)
 				pmlmepriv->LinkDetectInfo.TrafficTransitionCount -=2;
