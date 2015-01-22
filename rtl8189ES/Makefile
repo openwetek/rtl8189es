@@ -1209,9 +1209,8 @@ ARCH := arm
 KVER := 
 #KSRC := /media/pc-work/work/sdk/amlogic/jb-amlogic-mid/common/
 
-CROSS_COMPILE := arm-none-linux-gnueabi-
-
-KSRC := ../../../../
+CROSS_COMPILE := arm-linux-gnueabihf-
+KSRC := ../../../../../../common
 endif
 ifeq ($(CONFIG_PLATFORM_ARM_SUN6I), y)
 EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN
