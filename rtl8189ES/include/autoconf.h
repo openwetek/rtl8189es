@@ -72,7 +72,7 @@
 #define CONFIG_AP_MODE
 #ifdef CONFIG_AP_MODE
 
-	#define CONFIG_INTERRUPT_BASED_TXBCN // Tx Beacon when driver early interrupt occurs	
+	#define CONFIG_INTERRUPT_BASED_TXBCN
 	#if defined(CONFIG_CONCURRENT_MODE) && defined(CONFIG_INTERRUPT_BASED_TXBCN)
 		#undef CONFIG_INTERRUPT_BASED_TXBCN
 	#endif
@@ -278,6 +278,7 @@
  * Debug Related Config
  */
 #define DBG	1
+
 //#define CONFIG_DEBUG /* DBG_871X, etc... */
 //#define CONFIG_DEBUG_RTL871X /* RT_TRACE, RT_PRINT_DATA, _func_enter_, _func_exit_ */
 
