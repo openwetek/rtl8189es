@@ -951,7 +951,7 @@ struct _ADAPTER{
 		u8 old_ips_mode;
 		u8 old_bRegUseLed;
 	} rereg_nd_name_priv;
-
+	u8 ndev_unregistering;
 	int bup;
 	struct net_device_stats stats;
 	struct iw_statistics iwstats;
