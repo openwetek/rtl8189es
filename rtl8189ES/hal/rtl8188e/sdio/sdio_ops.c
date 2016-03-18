@@ -734,7 +734,7 @@ static u32 sdio_write_port(
 	padapter = pintfhdl->padapter;
 	psdio = &adapter_to_dvobj(padapter)->intf_data;
 
-	if (padapter->hw_init_completed == _FALSE) {
+	if (!rtw_is_hw_init_completed(padapter)) {
 		DBG_871X("%s [addr=0x%x cnt=%d] padapter->hw_init_completed == _FALSE\n",__func__,addr,cnt);
 		return _FAIL;
 	}
@@ -1251,7 +1251,7 @@ void InitInterrupt8188ESdio(PADAPTER padapter)
 								SDIO_HIMR_BCNERLY_INT_MSK			|
 #endif //CONFIG_EXT_CLK
 //								SDIO_HIMR_C2HCMD_MSK				|
-#if defined(CONFIG_LPS_LCLK) && !defined(CONFIG_DETECT_CPWM_BY_POLLING)
+#ifdef CONFIG_LPS_LCLK
 								SDIO_HIMR_CPWM1_MSK				|
 								SDIO_HIMR_CPWM2_MSK				|
 #endif
@@ -1299,11 +1299,6 @@ void EnableInterrupt8188ESdio(PADAPTER padapter)
 	PHAL_DATA_TYPE pHalData;
 	u32 himr;
 
-#ifdef CONFIG_CONCURRENT_MODE
-	if ((padapter->isprimary == _FALSE) && padapter->pbuddy_adapter){
-		padapter = padapter->pbuddy_adapter;
-	}
-#endif
 	pHalData = GET_HAL_DATA(padapter);
 	himr = cpu_to_le32(pHalData->sdio_himr);
 	sdio_local_write(padapter, SDIO_REG_HIMR, 4, (u8*)&himr);
@@ -1331,11 +1326,6 @@ void DisableInterrupt8188ESdio(PADAPTER padapter)
 {
 	u32 himr;
 
-#ifdef CONFIG_CONCURRENT_MODE
-	if ((padapter->isprimary == _FALSE) && padapter->pbuddy_adapter){
-		padapter = padapter->pbuddy_adapter;
-	}
-#endif
 	himr = cpu_to_le32(SDIO_HIMR_DISABLED);
 	sdio_local_write(padapter, SDIO_REG_HIMR, 4, (u8*)&himr);
 
@@ -1354,12 +1344,6 @@ void DisableInterrupt8188ESdio(PADAPTER padapter)
 void UpdateInterruptMask8188ESdio(PADAPTER padapter, u32 AddMSR, u32 RemoveMSR)
 {
 	HAL_DATA_TYPE *pHalData;
-
-#ifdef CONFIG_CONCURRENT_MODE
-	if ((padapter->isprimary == _FALSE) && padapter->pbuddy_adapter){
-		padapter = padapter->pbuddy_adapter;
-	}
-#endif
 	pHalData = GET_HAL_DATA(padapter);
 
 	if (AddMSR)
@@ -1393,7 +1377,7 @@ u8 CheckIPSStatus(PADAPTER padapter)
 }
 
 
-#ifdef CONFIG_WOWLAN
+#if defined(CONFIG_WOWLAN) || defined(CONFIG_AP_WOWLAN)
 void ClearInterrupt8188ESdio(PADAPTER padapter)
 {
     HAL_DATA_TYPE   *pHalData = GET_HAL_DATA(padapter);
@@ -1488,11 +1472,14 @@ static struct recv_buf* sd_recv_rxfifo(PADAPTER padapter, u32 size)
 
 		DBG_871X("%s: alloc_skb for rx buffer\n", __FUNCTION__);
 
-		rtw_hal_get_def_var(padapter, HAL_DEF_MAX_RECVBUF_SZ, &max_recvbuf_sz);
+		rtw_hal_get_def_var(padapter,
+				    HAL_DEF_MAX_RECVBUF_SZ, &max_recvbuf_sz);
+
 		if (max_recvbuf_sz == 0)
 			max_recvbuf_sz = MAX_RECVBUF_SZ;
 
-		precvbuf->pskb = rtw_skb_alloc(max_recvbuf_sz + RECVBUFF_ALIGN_SZ);
+		precvbuf->pskb = rtw_skb_alloc(max_recvbuf_sz +
+					       RECVBUFF_ALIGN_SZ);
 
 		if(precvbuf->pskb)
 		{
@@ -1824,8 +1811,7 @@ void sd_int_hdl(PADAPTER padapter)
 {
 	u8 data[6];
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
-	if ((padapter->bDriverStopped == _TRUE) ||
-	    (padapter->bSurpriseRemoved == _TRUE))
+	if (RTW_CANNOT_RUN(padapter))
 		return;
 
 	_sdio_local_read(padapter, SDIO_REG_HISR, 6, data);
@@ -1903,7 +1889,7 @@ u8 HalQueryTxOQTBufferStatus8189ESdio(PADAPTER padapter)
 	return _TRUE;
 }
 
-#ifdef CONFIG_WOWLAN
+#if defined(CONFIG_WOWLAN) || defined(CONFIG_AP_WOWLAN)
 u8 RecvOnePkt(PADAPTER padapter, u32 size)
 {
 	struct recv_buf *precvbuf;
