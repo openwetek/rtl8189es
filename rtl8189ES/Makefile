@@ -39,7 +39,7 @@ CONFIG_SDIO_HCI = y
 CONFIG_GSPI_HCI = n
 ########################## Features ###########################
 CONFIG_MP_INCLUDED = y
-CONFIG_POWER_SAVING = y
+CONFIG_POWER_SAVING = n
 CONFIG_USB_AUTOSUSPEND = n
 CONFIG_HW_PWRP_DETECTION = n
 CONFIG_WIFI_TEST = n
@@ -71,6 +71,7 @@ CONFIG_PNO_SET_DEBUG = n
 CONFIG_AP_WOWLAN = n
 ######### Notify SDIO Host Keep Power During Syspend ##########
 CONFIG_RTW_SDIO_PM_KEEP_POWER = y
+CONFIG_SDIO_AGG_ENABLE = y
 ###################### Platform Related #######################
 CONFIG_PLATFORM_I386_PC = n
 CONFIG_PLATFORM_ANDROID_X86 = n
@@ -856,6 +857,10 @@ EXTRA_CFLAGS += -DCONFIG_RTW_SDIO_PM_KEEP_POWER
 endif
 endif
 
+ifeq ($(CONFIG_SDIO_AGG_ENABLE), y)
+EXTRA_CFLAGS += -DCONFIG_SDIO_AGG_ENABLE
+endif
+
 ifeq ($(CONFIG_REDUCE_TX_CPU_LOADING), y)
 EXTRA_CFLAGS += -DCONFIG_REDUCE_TX_CPU_LOADING
 endif
@@ -1143,7 +1148,6 @@ CROSS_COMPILE := aarch64-linux-gnu-
 KSRC := /mnt/nfsroot/rongjun.chen/android64/common
 
 endif
-
 ifeq ($(CONFIG_PLATFORM_MOZART), y)
 EXTRA_CFLAGS += -DCONFIG_LITTLE_ENDIAN -DCONFIG_PLATFORM_MOZART
 ARCH := arm
@@ -1327,7 +1331,8 @@ EXTRA_CFLAGS += -DCONFIG_TRAFFIC_PROTECT
 # default setting for Android 4.1, 4.2, 4.3, 4.4
 EXTRA_CFLAGS += -DCONFIG_CONCURRENT_MODE
 EXTRA_CFLAGS += -DCONFIG_IOCTL_CFG80211 -DRTW_USE_CFG80211_STA_EVENT
-EXTRA_CFLAGS += -DCONFIG_P2P_IPS -DCONFIG_QOS_OPTIMIZATION
+#EXTRA_CFLAGS += -DCONFIG_P2P_IPS -DCONFIG_QOS_OPTIMIZATION
+EXTRA_CFLAGS +=-DCONFIG_QOS_OPTIMIZATION
 
 EXTRA_CFLAGS += -DCONFIG_PLATFORM_OPS
 ifeq ($(CONFIG_USB_HCI), y)
@@ -1345,7 +1350,7 @@ ARCH := arm
 #CROSS_COMPILE := /home/android_sdk/Allwinner/a31/android-jb42/lichee/buildroot/output/external-toolchain/bin/arm-linux-gnueabi-
 #KSRC :=/home/android_sdk/Allwinner/a31/android-jb42/lichee/linux-3.3
 #ifeq ($(CONFIG_USB_HCI), y)
-#MODULE_NAME := 8188eu_sw
+MODULE_NAME := 8812au
 #endif
 # ==== Cross compile setting for kitkat-a3x_v4.5 =====
 CROSS_COMPILE := /home/android_sdk/Allwinner/a31/kitkat-a3x_v4.5/lichee/buildroot/output/external-toolchain/bin/arm-linux-gnueabi-
@@ -1626,8 +1631,7 @@ $(MODULE_NAME)-y += $(_HAL_INTFS_FILES)
 $(MODULE_NAME)-y += $(_OUTSRC_FILES)
 $(MODULE_NAME)-y += $(_PLATFORM_FILES)
 
-$(MODULE_NAME)-$(CONFIG_MP_INCLUDED) += core/rtw_mp.o \
-					core/rtw_mp_ioctl.o
+$(MODULE_NAME)-$(CONFIG_MP_INCLUDED) += core/rtw_mp.o
 
 ifeq ($(CONFIG_RTL8723B), y)
 $(MODULE_NAME)-$(CONFIG_MP_INCLUDED)+= core/rtw_bt_mp.o

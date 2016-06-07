@@ -9624,8 +9624,9 @@ static bool rtw_wowlan_parser_pattern_cmd(u8 *input, char *pattern,
 {
 	char *cp = NULL, *end = NULL;
 	size_t len = 0;
-	int pos = 0, temp = 0, mask_pos = 0, res = 0;
+	int pos = 0, mask_pos = 0, res = 0;
 	u8 member[2] = {0};
+	u8 hex;
 
 	cp = strchr(input, '=');
 	if (cp) {
@@ -9657,10 +9658,8 @@ static bool rtw_wowlan_parser_pattern_cmd(u8 *input, char *pattern,
 					 __func__);
 				goto error;
 			}
-			res = sscanf(member, "%02x", &temp);
-			if (temp < 0 || temp > 256)
-				goto error;
-			pattern[pos] = temp;
+			res = sscanf(member, "%02hhx", &hex);
+			pattern[pos] = hex;
 			mask_pos = pos / 8;
 			if (bit_mask)
 				bit_mask[mask_pos] |= 1 << (pos % 8);
@@ -9746,8 +9745,6 @@ static int rtw_wowlan_set_pattern(struct net_device *dev,
 				if (ret) {
 					pwrpriv->wowlan_pattern_idx++;
 					pwrpriv->wowlan_pattern = _TRUE;
-				} else {
-					goto _rtw_wowlan_set_pattern_exit;
 				}
 			}
 		} else if (strncmp(input, "clean", 5) == 0) {
@@ -9874,7 +9871,7 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 	u8 *rawdata = NULL;
 	char *pch, *ptmp, *token, *tmp[3]={0x00,0x00,0x00};
 	u16 i=0, j=0, mapLen=0, addr=0, cnts=0;
-	u16 max_available_size=0, raw_cursize=0, raw_maxsize=0;
+	u16 max_available_len = 0, raw_cursize = 0, raw_maxsize = 0;
 	int err;
 	#ifdef CONFIG_IOL
 	u8 org_fw_iol = padapter->registrypriv.fw_iol;// 0:Disable, 1:enable, 2:by usb speed
@@ -9961,34 +9958,54 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 	}
 	else if (strcmp(tmp[0], "realmap") == 0)
 	{
+		static u8 order = 0;
+		u8 *efuse;
+		u32 shift, cnt;
+		u32 blksz = 0x200; /* The size of one time show, default 512 */
+
 		mapLen = EFUSE_MAP_SIZE;
-		if (rtw_efuse_mask_map_read(padapter, EFUSE_WIFI , mapLen, pEfuseHal->fakeEfuseInitMap) == _FAIL)
-		{
+		efuse = pEfuseHal->fakeEfuseInitMap;
+		if (rtw_efuse_mask_map_read(padapter, 0, mapLen, efuse) == _FAIL) {
 			DBG_871X("%s: read realmap Fail!!\n", __FUNCTION__);
 			err = -EFAULT;
 			goto exit;
 		}
 
-//		DBG_871X("OFFSET\tVALUE(hex)\n");
+#if 0
+		DBG_871X("OFFSET\tVALUE(hex)\n");
+		for (i = 0; i < mapLen; i += 16) {
+			DBG_871X("0x%02x\t", i);
+			for (j = 0; j < 8; j++)
+				DBG_871X("%02X ", efuse[i+j]);
+			DBG_871X("\t");
+			for (; j < 16; j++)
+				DBG_871X("%02X ", efuse[i+j]);
+			DBG_871X("\n");
+		}
+		DBG_871X("\n");
+#endif
+
+		shift = blksz * order;
+		efuse += shift;
+		cnt = mapLen - shift;
+		if (cnt > blksz) {
+			cnt = blksz;
+			order++;
+		} else
+			order = 0;
+
 		sprintf(extra, "\n");
-		for (i = 0; i < EFUSE_MAP_SIZE; i += 16)
-		{
-//			DBG_871X("0x%02x\t", i);
-			sprintf(extra, "%s0x%02x\t", extra, i);
-			for (j=0; j<8; j++) {
-//				DBG_871X("%02X ", data[i+j]);
-				sprintf(extra, "%s%02X ", extra, pEfuseHal->fakeEfuseInitMap[i+j]);
-			}
-//			DBG_871X("\t");
+		for (i = 0; i < cnt; i += 16) {
+			sprintf(extra, "%s0x%02x\t", extra, shift + i);
+			for (j = 0; j < 8; j++)
+				sprintf(extra, "%s%02X ", extra, efuse[i+j]);
 			sprintf(extra, "%s\t", extra);
-			for (; j<16; j++) {
-//				DBG_871X("%02X ", data[i+j]);
-				sprintf(extra, "%s%02X ", extra, pEfuseHal->fakeEfuseInitMap[i+j]);
-			}
-//			DBG_871X("\n");
+			for (; j < 16; j++)
+				sprintf(extra, "%s%02X ", extra, efuse[i+j]);
 			sprintf(extra,"%s\n",extra);
 		}
-//		DBG_871X("\n");
+		if ((shift + cnt) < mapLen)
+			sprintf(extra, "%s\t...more\n", extra);
 	}
 	else if (strcmp(tmp[0], "rmap") == 0)
 	{
@@ -10012,8 +10029,8 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 		}
 		DBG_871X("%s: cnts=%d\n", __FUNCTION__, cnts);
 
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN , (PVOID)&max_available_size, _FALSE);
-		if ((addr+ cnts) > max_available_size)
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN , (PVOID)&max_available_len, _FALSE);
+		if ((addr + cnts) > max_available_len)
 		{
 			DBG_871X("%s: addr(0x%X)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EINVAL;
@@ -10040,37 +10057,33 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 		addr = 0;
 		mapLen = EFUSE_MAX_SIZE;
 		DBG_871X("EFUSE_MAX_SIZE =%d\n",EFUSE_MAX_SIZE);
-		if (rtw_efuse_access(padapter, _FALSE, addr, mapLen, rawdata) == _FAIL)
-		{
-			DBG_871X("%s: rtw_efuse_access Fail!!\n", __FUNCTION__);
+
+		if (rtw_efuse_access(padapter, _FALSE, addr, mapLen, rawdata) == _FAIL) {
+			DBG_871X("%s: rtw_efuse_access Fail!!\n", __func__);
 			err = -EFAULT;
 			goto exit;
 		}
+
+		if (mapLen >= 512)
+			mapLen = 512;
+
 		_rtw_memset(extra,'\0',strlen(extra));
-		//		DBG_871X("%s: realraw={\n", __FUNCTION__);
+
 				sprintf(extra, "\n0x00\t");
 
-				for (i=0; i< 512 ; i++)
-				{
-		//			DBG_871X("%02X", rawdata[i]);
+		for (i = 0; i < mapLen ; i++) {
 					sprintf(extra, "%s%02X", extra, rawdata[i]);
 					if ((i & 0xF) == 0xF) {
-		//				DBG_871X("\n");
 						sprintf(extra, "%s\n", extra);
 						sprintf(extra, "%s0x%02x\t", extra, i+1);
-					}
-					else if ((i & 0x7) == 0x7){
-		//				DBG_871X("\t");
+			} else if ((i & 0x7) == 0x7) {
 						sprintf(extra, "%s \t", extra);
 					} else {
-		//				DBG_871X(" ");
 						sprintf(extra, "%s ", extra);
 					}
 				}
-		//		DBG_871X("}\n");
-	}
-	else if (strcmp(tmp[0], "realrawb") == 0)
-	{
+
+	} else if (strcmp(tmp[0], "realrawb") == 0) {
 		addr = 0;
 		mapLen = EFUSE_MAX_SIZE;
 		DBG_871X("EFUSE_MAX_SIZE =%d   \n",EFUSE_MAX_SIZE);
@@ -10112,8 +10125,8 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 		addr = hal_efuse_macaddr_offset(padapter);
 		cnts = 6;
 
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);
-		if ((addr + cnts) > max_available_size) {
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_len, _FALSE);
+		if ((addr + cnts) > max_available_len) {
 			DBG_871X("%s: addr(0x%02x)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EFAULT;
 			goto exit;
@@ -10169,9 +10182,8 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 
 		cnts = 4;
 
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);
-		if ((addr + cnts) > max_available_size)
-		{
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_len, _FALSE);
+		if ((addr + cnts) > max_available_len) {
 			DBG_871X("%s: addr(0x%02x)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EFAULT;
 			goto exit;
@@ -10196,9 +10208,7 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 			}
 		}
 //		DBG_871X("}\n");
-	}
-	else if (strcmp(tmp[0], "ableraw") == 0)
-	{
+	} else if (strcmp(tmp[0], "ableraw") == 0) {
 		efuse_GetCurrentSize(padapter,&raw_cursize);
 		raw_maxsize = efuse_GetMaxSize(padapter);
 		sprintf(extra, "[available raw size]= %d bytes", raw_maxsize-raw_cursize);
@@ -10293,9 +10303,8 @@ static int rtw_mp_efuse_get(struct net_device *dev,
 		}
 		DBG_871X("%s: cnts=%d\n", __FUNCTION__, cnts);
 
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_BT, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);
-		if ((addr + cnts) > max_available_size)
-		{
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_BT, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_len, _FALSE);
+		if ((addr + cnts) > max_available_len) {
 			DBG_871X("%s: addr(0x%X)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EFAULT;
 			goto exit;
@@ -10492,7 +10501,7 @@ static int rtw_mp_efuse_set(struct net_device *dev,
 	u8 *ShadowMapWiFi = NULL;
 	u8 *setrawdata = NULL;
 	char *pch, *ptmp, *token, *tmp[3]={0x00,0x00,0x00};
-	u16 addr=0xFF, cnts=0, BTStatus=0 , max_available_size=0;
+	u16 addr = 0xFF, cnts = 0, BTStatus = 0 , max_available_len = 0;
 	int err;
 
 	wrqu = (struct iw_point*)wdata;
@@ -10597,14 +10606,10 @@ static int rtw_mp_efuse_set(struct net_device *dev,
 		{
 			setdata[jj] = key_2char2num(tmp[2][kk], tmp[2][kk+1]);
 		}
-#ifndef CONFIG_RTL8188E
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);
-#else
-		//Change to check TYPE_EFUSE_MAP_LEN ,beacuse 8188E raw 256,logic map over 256.
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_size, _FALSE);
-#endif
-		if ((addr+cnts) > max_available_size)
-		{
+
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_len, _FALSE);
+
+		if ((addr + cnts) > max_available_len) {
 			DBG_871X("%s: addr(0x%X)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EFAULT;
 			goto exit;
@@ -10719,14 +10724,10 @@ static int rtw_mp_efuse_set(struct net_device *dev,
 		{
 			setdata[jj] = key_2char2num(tmp[1][kk], tmp[1][kk+1]);
 		}
-#ifndef CONFIG_RTL8188E
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);
-#else
-		//Change to check TYPE_EFUSE_MAP_LEN ,beacuse 8188E raw 256,logic map over 256.
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_size, _FALSE);
-#endif
-		if ((addr+cnts) > max_available_size)
-		{
+
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_len, _FALSE);
+
+		if ((addr + cnts) > max_available_len) {
 			DBG_871X("%s: addr(0x%X)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EFAULT;
 			goto exit;
@@ -10796,9 +10797,8 @@ static int rtw_mp_efuse_set(struct net_device *dev,
 			setdata[jj] = key_2char2num(tmp[1][kk], tmp[1][kk+1]);
 		}
 
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);
-		if ((addr+cnts) > max_available_size)
-		{
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_len, _FALSE);
+		if ((addr + cnts) > max_available_len) {
 			DBG_871X("%s: addr(0x%X)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EFAULT;
 			goto exit;
@@ -10872,9 +10872,8 @@ static int rtw_mp_efuse_set(struct net_device *dev,
 			setdata[jj] = key_2char2num(tmp[2][kk], tmp[2][kk+1]);
 		}
 
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_BT, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);
-		if ((addr+cnts) > max_available_size)
-		{
+		EFUSE_GetEfuseDefinition(padapter, EFUSE_BT, TYPE_EFUSE_MAP_LEN, (PVOID)&max_available_len, _FALSE);
+		if ((addr + cnts) > max_available_len) {
 			DBG_871X("%s: addr(0x%X)+cnts(%d) parameter error!\n", __FUNCTION__, addr, cnts);
 			err = -EFAULT;
 			goto exit;
@@ -10972,13 +10971,6 @@ static int rtw_mp_efuse_set(struct net_device *dev,
 
 		_rtw_memcpy(pEfuseHal->BTEfuseModifiedMap, pEfuseHal->fakeBTEfuseModifiedMap, EFUSE_BT_MAX_MAP_LEN);
 			
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_BT, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);	
-		if (max_available_size < 1)
-		{
-			err = -EFAULT;
-			goto exit;
-		}
-
 		if (rtw_BT_efuse_map_write(padapter, 0x00, EFUSE_BT_MAX_MAP_LEN, pEfuseHal->fakeBTEfuseModifiedMap) == _FAIL)
 		{
 			DBG_871X("%s: rtw_BT_efuse_map_write error!\n", __FUNCTION__);
@@ -11048,12 +11040,6 @@ static int rtw_mp_efuse_set(struct net_device *dev,
 	}
 	else if (strcmp(tmp[0], "wlfk2map") == 0)
 	{
-		EFUSE_GetEfuseDefinition(padapter, EFUSE_WIFI, TYPE_AVAILABLE_EFUSE_BYTES_TOTAL, (PVOID)&max_available_size, _FALSE);					
-		if (max_available_size < 1)
-		{
-			err = -EFAULT;
-			goto exit;
-		}
 		if (rtw_efuse_map_write(padapter, 0x00, EFUSE_MAP_SIZE, pEfuseHal->fakeEfuseModifiedMap) == _FAIL)
 		{
 			DBG_871X("%s: rtw_efuse_map_write fakeEfuseModifiedMap error!\n", __FUNCTION__);
@@ -11144,6 +11130,179 @@ exit:
 
 
 #ifdef CONFIG_MP_INCLUDED
+static int rtw_priv_mp_set(struct net_device *dev,
+			struct iw_request_info *info,
+			union iwreq_data *wdata, char *extra)
+{
+
+	struct iw_point *wrqu = (struct iw_point *)wdata;
+	u32 subcmd = wrqu->flags;
+
+	switch (subcmd) {
+	case MP_START:
+			DBG_871X("set case mp_start\n");
+			rtw_mp_start(dev, info, wrqu, extra);
+			break;
+	case MP_STOP:
+			DBG_871X("set case mp_stop\n");
+			rtw_mp_stop(dev, info, wrqu, extra);
+			break;
+	case MP_BANDWIDTH:
+			DBG_871X("set case mp_bandwidth\n");
+			rtw_mp_bandwidth(dev, info, wrqu, extra);
+			break;
+	case MP_RESET_STATS:
+			DBG_871X("set case MP_RESET_STATS\n");
+			rtw_mp_reset_stats(dev, info, wrqu, extra);
+			break;
+	case MP_SetRFPathSwh:
+			DBG_871X("set MP_SetRFPathSwitch\n");
+			rtw_mp_SetRFPath(dev, info, wdata, extra);
+			break;
+	case CTA_TEST:
+			DBG_871X("set CTA_TEST\n");
+			rtw_cta_test_start(dev, info, wdata, extra);
+			break;
+	case MP_DISABLE_BT_COEXIST:
+			DBG_871X("set case MP_DISABLE_BT_COEXIST\n");
+			rtw_mp_disable_bt_coexist(dev, info, wdata, extra);
+			break;
+	default:
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int rtw_priv_mp_get(struct net_device *dev,
+			struct iw_request_info *info,
+			union iwreq_data *wdata, char *extra)
+{
+
+	struct iw_point *wrqu = (struct iw_point *)wdata;
+	u32 subcmd = wrqu->flags;
+
+	switch (subcmd) {
+	case WRITE_REG:
+			rtw_mp_write_reg(dev, info, wrqu, extra);
+			break;
+	case WRITE_RF:
+			rtw_mp_write_rf(dev, info, wrqu, extra);
+			break;
+	case MP_PHYPARA:
+			DBG_871X("mp_get  MP_PHYPARA\n");
+			rtw_mp_phypara(dev, info, wrqu, extra);
+			break;
+	case MP_CHANNEL:
+			DBG_871X("set case mp_channel\n");
+			rtw_mp_channel(dev , info, wrqu, extra);
+			break;
+	case READ_REG:
+			DBG_871X("mp_get  READ_REG\n");
+			rtw_mp_read_reg(dev, info, wrqu, extra);
+			 break;
+	case READ_RF:
+			DBG_871X("mp_get  READ_RF\n");
+			rtw_mp_read_rf(dev, info, wrqu, extra);
+			break;
+	case MP_RATE:
+			DBG_871X("set case mp_rate\n");
+			rtw_mp_rate(dev, info, wrqu, extra);
+			break;
+	case MP_TXPOWER:
+			DBG_871X("set case MP_TXPOWER\n");
+			rtw_mp_txpower(dev, info, wrqu, extra);
+			break;
+	case MP_ANT_TX:
+			DBG_871X("set case MP_ANT_TX\n");
+			rtw_mp_ant_tx(dev, info, wrqu, extra);
+			break;
+	case MP_ANT_RX:
+			DBG_871X("set case MP_ANT_RX\n");
+			rtw_mp_ant_rx(dev, info, wrqu, extra);
+			break;
+	case MP_QUERY:
+			rtw_mp_trx_query(dev, info, wrqu, extra);
+			break;
+	case MP_CTX:
+			DBG_871X("set case MP_CTX\n");
+			rtw_mp_ctx(dev, info, wrqu, extra);
+			break;
+	case MP_ARX:
+			DBG_871X("set case MP_ARX\n");
+			rtw_mp_arx(dev, info, wrqu, extra);
+			break;
+	case MP_DUMP:
+			DBG_871X("set case MP_DUMP\n");
+			rtw_mp_dump(dev, info, wrqu, extra);
+			break;
+	case MP_PSD:
+			DBG_871X("set case MP_PSD\n");
+			rtw_mp_psd(dev, info, wrqu, extra);
+			break;
+	case MP_THER:
+			DBG_871X("set case MP_THER\n");
+			rtw_mp_thermal(dev, info, wrqu, extra);
+			break;
+	case MP_PwrCtlDM:
+			DBG_871X("set MP_PwrCtlDM\n");
+			rtw_mp_PwrCtlDM(dev, info, wrqu, extra);
+		break;
+	case MP_QueryDrvStats:
+			DBG_871X("mp_get MP_QueryDrvStats\n");
+			rtw_mp_QueryDrv(dev, info, wdata, extra);
+			break;
+	case MP_PWRTRK:
+			DBG_871X("set case MP_PWRTRK\n");
+			rtw_mp_pwrtrk(dev, info, wrqu, extra);
+			break;
+	case EFUSE_SET:
+			DBG_871X("set case efuse set\n");
+			rtw_mp_efuse_set(dev, info, wdata, extra);
+			break;
+	case EFUSE_GET:
+			DBG_871X("efuse get EFUSE_GET\n");
+			rtw_mp_efuse_get(dev, info, wdata, extra);
+			break;
+	case MP_GET_TXPOWER_INX:
+			DBG_871X("mp_get MP_GET_TXPOWER_INX\n");
+			rtw_mp_txpower_index(dev, info, wrqu, extra);
+			break;
+	case MP_GETVER:
+			DBG_871X("mp_get MP_GETVER\n");
+			rtw_mp_getver(dev, info, wdata, extra);
+			break;
+	case MP_MON:
+			DBG_871X("mp_get MP_MON\n");
+			rtw_mp_mon(dev, info, wdata, extra);
+			break;
+	case EFUSE_MASK:
+			DBG_871X("mp_get EFUSE_MASK\n");
+			rtw_efuse_mask_file(dev, info, wdata, extra);
+			break;
+	case  EFUSE_FILE:
+			DBG_871X("mp_get EFUSE_FILE\n");
+			rtw_efuse_file_map(dev, info, wdata, extra);
+			break;
+	case  MP_TX:
+			DBG_871X("mp_get MP_TX\n");
+			rtw_mp_tx(dev, info, wdata, extra);
+			break;
+	case  MP_RX:
+			DBG_871X("mp_get MP_RX\n");
+			rtw_mp_rx(dev, info, wdata, extra);
+			break;
+	case MP_HW_TX_MODE:
+			DBG_871X("mp_get MP_HW_TX_MODE\n");
+			rtw_mp_hwtx(dev, info, wdata, extra);
+			break;
+	default:
+			return -EIO;
+	}
+
+	return 0;
+}
+#endif /*#if defined(CONFIG_MP_INCLUDED)*/
 
 #ifdef CONFIG_SDIO_INDIRECT_ACCESS
 #define DBG_MP_SDIO_INDIRECT_ACCESS 1
@@ -11279,7 +11438,7 @@ exit:
 }
 #endif /* CONFIG_SDIO_INDIRECT_ACCESS */
 
-static int rtw_mp_set(struct net_device *dev,
+static int rtw_priv_set(struct net_device *dev,
 			struct iw_request_info *info,
 			union iwreq_data *wdata, char *extra)
 {
@@ -11288,12 +11447,9 @@ static int rtw_mp_set(struct net_device *dev,
 	PADAPTER padapter = rtw_netdev_priv(dev);
 
 	if (padapter == NULL)
-	{
 		return -ENETDOWN;
-	}
 
-	if((padapter->bup == _FALSE ))
-	{
+	if (padapter->bup == _FALSE ) {
 		DBG_871X(" %s fail =>(padapter->bup == _FALSE )\n",__FUNCTION__);
 		return -ENETDOWN;
 	}
@@ -11301,75 +11457,44 @@ static int rtw_mp_set(struct net_device *dev,
 	if (RTW_CANNOT_RUN(padapter)) {
 		DBG_871X("%s fail =>(bSurpriseRemoved == _TRUE) || ( bDriverStopped == _TRUE)\n", __func__);
 		return -ENETDOWN;
-       }
+	}
 
-	
-	//_rtw_memset(extra, 0x00, IW_PRIV_SIZE_MASK);
-
-	if (extra == NULL)
-	{
+	if (extra == NULL) {
 		wrqu->length = 0;
 		return -EIO;
 	}
 
-	switch(subcmd)
-	{
-	case MP_START:
-			DBG_871X("set case mp_start \n");
-			rtw_mp_start (dev,info,wrqu,extra);
-			 break; 
-			 
-	case MP_STOP:
-			DBG_871X("set case mp_stop \n");
-			rtw_mp_stop (dev,info,wrqu,extra);
-			 break; 
-			 
-	case MP_BANDWIDTH:
-			DBG_871X("set case mp_bandwidth \n");
-			rtw_mp_bandwidth (dev,info,wrqu,extra);
-			break;
-				
-	case MP_RESET_STATS:
-			DBG_871X("set case MP_RESET_STATS \n");
-			rtw_mp_reset_stats	(dev,info,wrqu,extra);
-			break;
-	case MP_SetRFPathSwh:		
-			DBG_871X("set MP_SetRFPathSwitch \n");
-			rtw_mp_SetRFPath  (dev,info,wdata,extra);
-			break;
-	case CTA_TEST:
-			DBG_871X("set CTA_TEST\n");
-			rtw_cta_test_start (dev, info, wdata, extra);
-			break;
-	case MP_DISABLE_BT_COEXIST:
-			DBG_871X("set case MP_DISABLE_BT_COEXIST \n");
-			rtw_mp_disable_bt_coexist(dev, info, wdata, extra);
-		break;
+	if (subcmd < MP_NULL) {
+		rtw_priv_mp_set(dev, info, wdata, extra);
+		return 0;
+	}
+
+	switch(subcmd) {
 #ifdef CONFIG_WOWLAN
 	case MP_WOW_ENABLE:
 			DBG_871X("set case MP_WOW_ENABLE: %s\n", extra);
 			
 			rtw_wowlan_ctrl(dev, info, wdata, extra);
-	break;
+			break;
 	case MP_WOW_SET_PATTERN:
 			DBG_871X("set case MP_WOW_SET_PATTERN: %s\n", extra);
 			rtw_wowlan_set_pattern(dev, info, wdata, extra);
-	break;
+			break;
 #endif
 #ifdef CONFIG_AP_WOWLAN
 	case MP_AP_WOW_ENABLE:
 			DBG_871X("set case MP_AP_WOW_ENABLE: %s\n", extra);
 			rtw_ap_wowlan_ctrl(dev, info, wdata, extra);
-	break;
+			break;
 #endif
+	default:
+			return -EIO;
 	}
-
-	  
 	return 0;		
 }
 
 
-static int rtw_mp_get(struct net_device *dev,
+static int rtw_priv_get(struct net_device *dev,
 			struct iw_request_info *info,
 			union iwreq_data *wdata, char *extra)
 {
@@ -11377,14 +11502,10 @@ static int rtw_mp_get(struct net_device *dev,
 	u32 subcmd = wrqu->flags;
 	PADAPTER padapter = rtw_netdev_priv(dev);
 
-	//DBG_871X("in mp_get extra= %s \n",extra);
-
 	if (padapter == NULL)
-	{
 		return -ENETDOWN;
-	}
-	if((padapter->bup == _FALSE ))
-	{
+
+	if (padapter->bup == _FALSE ) {
 		DBG_871X(" %s fail =>(padapter->bup == _FALSE )\n",__FUNCTION__);
 		return -ENETDOWN;
 	}
@@ -11392,136 +11513,19 @@ static int rtw_mp_get(struct net_device *dev,
 	if (RTW_CANNOT_RUN(padapter)) {
 		DBG_871X("%s fail =>(padapter->bSurpriseRemoved == _TRUE) || ( padapter->bDriverStopped == _TRUE)\n", __func__);
 		return -ENETDOWN;
-       }
+	}
 	
 	if (extra == NULL) {
 		wrqu->length = 0;
 		return -EIO;
 	}
+
+	if (subcmd < MP_NULL) {
+		rtw_priv_mp_get(dev, info, wdata, extra);
+		return 0;
+	}
 	
 	switch (subcmd) {
-	case WRITE_REG:
-			rtw_mp_write_reg(dev, info, wrqu, extra);
-			 break;
-			 
-	case WRITE_RF:
-			rtw_mp_write_rf(dev, info, wrqu, extra);
-			 break; 
-			 
-	case MP_PHYPARA:
-			DBG_871X("mp_get  MP_PHYPARA\n");
-			rtw_mp_phypara(dev, info, wrqu, extra);
-			break;
-
-	case MP_CHANNEL:
-			DBG_871X("set case mp_channel\n");
-			rtw_mp_channel(dev , info, wrqu, extra);
-			break;
-			
-	case READ_REG:
-			DBG_871X("mp_get  READ_REG\n");
-			rtw_mp_read_reg(dev, info, wrqu, extra);
-			 break; 
-	case READ_RF:
-			DBG_871X("mp_get  READ_RF\n");
-			rtw_mp_read_rf(dev, info, wrqu, extra);
-			break; 
-			
-	case MP_RATE:
-			DBG_871X("set case mp_rate\n");
-			rtw_mp_rate(dev, info, wrqu, extra);
-			break;
-			
-	case MP_TXPOWER:
-			DBG_871X("set case MP_TXPOWER\n");
-			rtw_mp_txpower(dev, info, wrqu, extra);
-			break;
-			
-	case MP_ANT_TX:
-			DBG_871X("set case MP_ANT_TX\n");
-			rtw_mp_ant_tx(dev, info, wrqu, extra);
-			break;
-			
-	case MP_ANT_RX:
-			DBG_871X("set case MP_ANT_RX\n");
-			rtw_mp_ant_rx(dev, info, wrqu, extra);
-			break;
-			
-	case MP_QUERY:
-			rtw_mp_trx_query(dev, info, wrqu, extra);
-			break;
-					
-	case MP_CTX:
-			DBG_871X("set case MP_CTX\n");
-			rtw_mp_ctx(dev, info, wrqu, extra);
-			break;
-					
-	case MP_ARX:
-			DBG_871X("set case MP_ARX\n");
-			rtw_mp_arx(dev, info, wrqu, extra);
-			break;
-			
-	case EFUSE_GET:
-			DBG_871X("efuse get EFUSE_GET\n");
-			rtw_mp_efuse_get(dev, info, wdata, extra);
-		 break; 
-		 
-	case MP_DUMP:
-			DBG_871X("set case MP_DUMP\n");
-			rtw_mp_dump(dev, info, wrqu, extra);
-		 break; 
-	case MP_PSD:
-			DBG_871X("set case MP_PSD\n");
-			rtw_mp_psd(dev, info, wrqu, extra);
-		 break;
-	case MP_THER:
-			DBG_871X("set case MP_THER\n");
-			rtw_mp_thermal(dev, info, wrqu, extra);
-		break;
-	case MP_PwrCtlDM:
-			DBG_871X("set MP_PwrCtlDM\n");
-			rtw_mp_PwrCtlDM(dev, info, wrqu, extra);
-		break;
-	case MP_QueryDrvStats:		
-			DBG_871X("mp_get MP_QueryDrvStats\n");
-			rtw_mp_QueryDrv(dev, info, wdata, extra);
-			break;
-	case MP_PWRTRK:
-			DBG_871X("set case MP_PWRTRK\n");
-			rtw_mp_pwrtrk(dev, info, wrqu, extra);
-			break;			 
-	case EFUSE_SET:
-			DBG_871X("set case efuse set\n");
-			rtw_mp_efuse_set(dev, info, wdata, extra);
-			break;			 
-	case MP_GET_TXPOWER_INX:
-			DBG_871X("mp_get MP_GET_TXPOWER_INX\n");
-			rtw_mp_txpower_index(dev, info, wrqu, extra);
-			break;
-	case MP_GETVER:
-			DBG_871X("mp_get MP_GETVER\n");
-			rtw_mp_getver(dev, info, wdata, extra);
-			break;
-	case MP_MON:
-			DBG_871X("mp_get MP_MON\n");
-			rtw_mp_mon(dev, info, wdata, extra);
-			break;
-	case EFUSE_MASK:
-			DBG_871X("mp_get EFUSE_MASK\n");
-			rtw_efuse_mask_file(dev, info, wdata, extra);
-			break;
-	case  EFUSE_FILE:
-			DBG_871X("mp_get EFUSE_FILE\n");
-			rtw_efuse_file_map(dev, info, wdata, extra);
-			break;
-	case  MP_TX:
-			DBG_871X("mp_get MP_TX\n");
-			rtw_mp_tx(dev, info, wdata, extra);
-			break;
-	case  MP_RX:
-			DBG_871X("mp_get MP_RX\n");
-			rtw_mp_rx(dev, info, wdata, extra);
-			break;
 #if defined(CONFIG_RTL8723B)
 	case MP_SetBT:		
 			DBG_871X("set MP_SetBT\n");
@@ -11536,13 +11540,13 @@ static int rtw_mp_get(struct net_device *dev,
 		rtw_mp_sd_iwrite(dev, info, wrqu, extra);
 		break;
 #endif
+	default:
+			return -EIO;
 	}
 
 	rtw_msleep_os(10); //delay 5ms for sending pkt before exit adb shell operation
 return 0;	
 }
-
-#endif /*#if defined(CONFIG_MP_INCLUDED)*/
 
 static int rtw_wfd_tdls_enable(struct net_device *dev,
 				struct iw_request_info *info,
@@ -13293,51 +13297,14 @@ static const struct iw_priv_args rtw_private_args[] = {
 	},
 #endif // CONFIG_INTEL_WIDI
 
-#ifdef CONFIG_MP_INCLUDED
 	{ SIOCIWFIRSTPRIV + 0x0E, IW_PRIV_TYPE_CHAR | 1024, 0 , ""},  //set 
 	{ SIOCIWFIRSTPRIV + 0x0F, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK , ""},//get
 /* --- sub-ioctls definitions --- */   
-		{ MP_START , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_start" }, //set
-		{ MP_PHYPARA, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_phypara" },//get
-		{ MP_STOP , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_stop" }, //set
-		{ MP_CHANNEL , IW_PRIV_TYPE_CHAR | 1024 , IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_channel" },//get
-		{ MP_BANDWIDTH , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_bandwidth"}, //set
-		{ MP_RATE , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_rate" },//get
-		{ MP_RESET_STATS , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_reset_stats"},
-		{ MP_QUERY , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK , "mp_query"}, //get
-		{ READ_REG , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "read_reg" },
-		{ MP_RATE , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_rate" },
-		{ READ_RF , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "read_rf" },
-		{ MP_PSD , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_psd"}, 
-		{ MP_DUMP, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_dump" },
-		{ MP_TXPOWER , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_txpower"},
-		{ MP_ANT_TX , IW_PRIV_TYPE_CHAR | 1024,  IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ant_tx"},
-		{ MP_ANT_RX , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ant_rx"},
-		{ WRITE_REG , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "write_reg" },
-		{ WRITE_RF , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "write_rf" },
-		{ MP_CTX , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ctx"},
-		{ MP_ARX , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_arx"},
-		{ MP_THER , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ther"},
-		{ EFUSE_SET, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_set" },
-		{ EFUSE_GET, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_get" },
-		{ MP_PWRTRK , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_pwrtrk"},
-		{ MP_QueryDrvStats, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_drvquery" },
-		{ MP_IOCTL, IW_PRIV_TYPE_CHAR | 1024, 0, "mp_ioctl"}, // mp_ioctl	
-		{ MP_SetRFPathSwh, IW_PRIV_TYPE_CHAR | 1024, 0, "mp_setrfpath" },		
-		{ MP_PwrCtlDM, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_pwrctldm" },		
-		{ MP_GET_TXPOWER_INX, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_get_txpower" },
-		{ MP_GETVER, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_priv_ver" },
-		{ MP_MON, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_mon" },
-		{ EFUSE_MASK, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_mask" },
-		{ EFUSE_FILE, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_file" },
-		{ MP_TX, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_tx" },
-		{ MP_RX, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_rx" },
 #if defined(CONFIG_RTL8723B)
 		{ MP_SetBT, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_setbt" },
         { MP_DISABLE_BT_COEXIST, IW_PRIV_TYPE_CHAR | 1024, 0, "mp_disa_btcoex"},
 #endif
-		{ CTA_TEST, IW_PRIV_TYPE_CHAR | 1024, 0, "cta_test"},
-#endif
+
 #ifdef CONFIG_WOWLAN
 		{ MP_WOW_ENABLE , IW_PRIV_TYPE_CHAR | 1024, 0, "wow_mode" },
 		{ MP_WOW_SET_PATTERN , IW_PRIV_TYPE_CHAR | 1024, 0, "wow_set_pattern" },
@@ -13351,12 +13318,59 @@ static const struct iw_priv_args rtw_private_args[] = {
 #endif
 };
 
+static const struct iw_priv_args rtw_mp_private_args[] = {
+/* --- sub-ioctls definitions --- */
+#ifdef CONFIG_MP_INCLUDED
+			{ MP_START , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_start" },
+			{ MP_PHYPARA, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_phypara" },
+			{ MP_STOP , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_stop" },
+			{ MP_CHANNEL , IW_PRIV_TYPE_CHAR | 1024 , IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_channel" },
+			{ MP_BANDWIDTH , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_bandwidth"},
+			{ MP_RATE , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_rate" },
+			{ MP_RESET_STATS , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_reset_stats"},
+			{ MP_QUERY , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK , "mp_query"},
+			{ READ_REG , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "read_reg" },
+			{ MP_RATE , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_rate" },
+			{ READ_RF , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "read_rf" },
+			{ MP_PSD , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_psd"},
+			{ MP_DUMP, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_dump" },
+			{ MP_TXPOWER , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_txpower"},
+			{ MP_ANT_TX , IW_PRIV_TYPE_CHAR | 1024,  IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ant_tx"},
+			{ MP_ANT_RX , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ant_rx"},
+			{ WRITE_REG , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "write_reg" },
+			{ WRITE_RF , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "write_rf" },
+			{ MP_CTX , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ctx"},
+			{ MP_ARX , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_arx"},
+			{ MP_THER , IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_ther"},
+			{ EFUSE_SET, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_set" },
+			{ EFUSE_GET, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_get" },
+			{ MP_PWRTRK , IW_PRIV_TYPE_CHAR | 1024, 0, "mp_pwrtrk"},
+			{ MP_QueryDrvStats, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_drvquery" },
+			{ MP_IOCTL, IW_PRIV_TYPE_CHAR | 1024, 0, "mp_ioctl"},
+			{ MP_SetRFPathSwh, IW_PRIV_TYPE_CHAR | 1024, 0, "mp_setrfpath" },
+			{ MP_PwrCtlDM, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_pwrctldm" },
+			{ MP_GET_TXPOWER_INX, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_get_txpower" },
+			{ MP_GETVER, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_priv_ver" },
+			{ MP_MON, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_mon" },
+			{ EFUSE_MASK, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_mask" },
+			{ EFUSE_FILE, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "efuse_file" },
+			{ MP_TX, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_tx" },
+			{ MP_RX, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_rx" },
+			{ MP_HW_TX_MODE, IW_PRIV_TYPE_CHAR | 1024, IW_PRIV_TYPE_CHAR | IW_PRIV_SIZE_MASK, "mp_hxtx" },
+			{ CTA_TEST, IW_PRIV_TYPE_CHAR | 1024, 0, "cta_test"},
+#endif /* CONFIG_MP_INCLUDED */
+};
+
 static iw_handler rtw_private_handler[] = 
 {
 	rtw_wx_write32,					//0x00
 	rtw_wx_read32,					//0x01
 	rtw_drvext_hdl,					//0x02
+#ifdef MP_IOCTL_HDL
 	rtw_mp_ioctl_hdl,				//0x03
+#else
+	rtw_wx_priv_null,
+#endif
 
 // for MM DTV platform
 	rtw_get_ap_info,					//0x04
@@ -13376,13 +13390,8 @@ static iw_handler rtw_private_handler[] =
 	rtw_dbg_port,					//0x0B
 	rtw_wx_write_rf,					//0x0C
 	rtw_wx_read_rf,					//0x0D
-#ifdef CONFIG_MP_INCLUDED
-	rtw_mp_set,					//0x0E
-	rtw_mp_get,					//0x0F
-#else
-	rtw_wx_priv_null,				//0x0E
-	rtw_wx_priv_null,				//0x0F
-#endif
+	rtw_priv_set,					//0x0E
+	rtw_priv_get,					//0x0F
 	rtw_p2p_set,					//0x10
 	rtw_p2p_get,					//0x11
 	NULL,							//0x12
@@ -13537,8 +13546,12 @@ static int _rtw_ioctl_wext_private(struct net_device *dev, union iwreq_data *wrq
 	s32 k;
 	const iw_handler *priv;		/* Private ioctl */
 	const struct iw_priv_args *priv_args;	/* Private ioctl description */
+	const struct iw_priv_args *mp_priv_args;	/*MP Private ioctl description */
+	const struct iw_priv_args *sel_priv_args;	/*Selected Private ioctl description */
 	u32 num_priv;				/* Number of ioctl */
 	u32 num_priv_args;			/* Number of descriptions */
+	u32 num_mp_priv_args;			/*Number of MP descriptions */
+	u32 num_sel_priv_args;			/*Number of Selected descriptions */
 	iw_handler handler;
 	int temp;
 	int subcmd = 0;				/* sub-ioctl index */
@@ -13572,8 +13585,10 @@ static int _rtw_ioctl_wext_private(struct net_device *dev, union iwreq_data *wrq
 
 	priv = rtw_private_handler;
 	priv_args = rtw_private_args;
+	mp_priv_args = rtw_mp_private_args;
 	num_priv = sizeof(rtw_private_handler) / sizeof(iw_handler);
 	num_priv_args = sizeof(rtw_private_args) / sizeof(struct iw_priv_args);
+	num_mp_priv_args = sizeof(rtw_mp_private_args) / sizeof(struct iw_priv_args);
 
 	if (num_priv_args == 0) {
 		err = -EOPNOTSUPP;
@@ -13582,23 +13597,36 @@ static int _rtw_ioctl_wext_private(struct net_device *dev, union iwreq_data *wrq
 
 	/* Search the correct ioctl */
 	k = -1;
-	while((++k < num_priv_args) && strcmp(priv_args[k].name, cmdname));
+	sel_priv_args = priv_args;
+	num_sel_priv_args = num_priv_args;
+	while
+	((++k < num_sel_priv_args) && strcmp(sel_priv_args[k].name, cmdname));
+
 
 	/* If not found... */
 	if (k == num_priv_args) {
-		err = -EOPNOTSUPP;
-		goto exit;
+		k = -1;
+		sel_priv_args = mp_priv_args;
+		num_sel_priv_args = num_mp_priv_args;
+		while
+		((++k < num_sel_priv_args) && strcmp(sel_priv_args[k].name, cmdname));
+
+		if (k == num_sel_priv_args) {
+			err = -EOPNOTSUPP;
+			goto exit;
+		}
+
 	}
 
 	/* Watch out for sub-ioctls ! */
-	if (priv_args[k].cmd < SIOCDEVPRIVATE)
+	if (sel_priv_args[k].cmd < SIOCDEVPRIVATE)
 	{
 		int j = -1;
 
 		/* Find the matching *real* ioctl */
 		while ((++j < num_priv_args) && ((priv_args[j].name[0] != '\0') ||
-			(priv_args[j].set_args != priv_args[k].set_args) ||
-			(priv_args[j].get_args != priv_args[k].get_args)));
+			(priv_args[j].set_args != sel_priv_args[k].set_args) ||
+			(priv_args[j].get_args != sel_priv_args[k].get_args)));
 
 		/* If not found... */
 		if (j == num_priv_args) {
@@ -13607,7 +13635,7 @@ static int _rtw_ioctl_wext_private(struct net_device *dev, union iwreq_data *wrq
 		}
 
 		/* Save sub-ioctl number */
-		subcmd = priv_args[k].cmd;
+		subcmd = sel_priv_args[k].cmd;
 		/* Reserve one int (simplify alignment issues) */
 		offset = sizeof(__u32);
 		/* Use real ioctl definition from now on */

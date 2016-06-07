@@ -13867,7 +13867,7 @@ operation_by_state:
 		
 		/* disable dynamic functions, such as high power, DIG */
 		rtw_phydm_ability_backup(padapter);
-		rtw_phydm_func_disable_all(padapter);
+		rtw_phydm_func_for_offchannel(padapter);
 		
 		/* set MSR to no link state */
 		Set_MSR(padapter, _HW_STATE_NOLINK_);

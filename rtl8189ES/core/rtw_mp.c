@@ -871,6 +871,9 @@ s32 mp_start_test(PADAPTER padapter)
 	#ifdef CONFIG_RTL8188F
 	rtl8188f_InitHalDm(padapter);
 	#endif
+	#ifdef CONFIG_RTL8188E
+	rtl8188e_InitHalDm(padapter);
+	#endif
 
 	//3 0. update mp_priv
 

@@ -5430,7 +5430,7 @@ break;
 #endif
 			break;
 		case HAL_DEF_RX_PACKET_OFFSET:
-			*(( u32*)pValue) = RXDESC_SIZE + DRVINFO_SZ;
+			*(( u32*)pValue) = RXDESC_SIZE + DRVINFO_SZ*8;
 			break;			
 #if (RATE_ADAPTIVE_SUPPORT == 1)
 		case HAL_DEF_RA_DECISION_RATE:

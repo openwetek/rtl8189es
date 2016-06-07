@@ -18,7 +18,7 @@
 * 
 ******************************************************************************/
 
-/*Image2HeaderVersion: 2.7*/
+/*Image2HeaderVersion: 2.16*/
 #if (RTL8188E_T_SUPPORT == 1)
 #ifndef __INC_MP_FW_HW_IMG_8188E_T_H
 #define __INC_MP_FW_HW_IMG_8188E_T_H

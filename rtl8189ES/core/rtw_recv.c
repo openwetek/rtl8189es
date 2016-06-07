@@ -3537,11 +3537,15 @@ int recv_indicatepkt_reorder(_adapter *padapter, union recv_frame *prframe)
 	//recv_indicatepkts_in_order(padapter, preorder_ctrl, _TRUE);
 	if(recv_indicatepkts_in_order(padapter, preorder_ctrl, _FALSE)==_TRUE)
 	{
-		_set_timer(&preorder_ctrl->reordering_ctrl_timer, REORDER_WAIT_TIME);
+		if (!preorder_ctrl->bReorderWaiting) {
+			preorder_ctrl->bReorderWaiting = _TRUE;
+			_set_timer(&preorder_ctrl->reordering_ctrl_timer, REORDER_WAIT_TIME);
+		}
 		_exit_critical_bh(&ppending_recvframe_queue->lock, &irql);
 	}
 	else
 	{
+		preorder_ctrl->bReorderWaiting = _FALSE;
 		_exit_critical_bh(&ppending_recvframe_queue->lock, &irql);
 		_cancel_timer_ex(&preorder_ctrl->reordering_ctrl_timer);
 	}
@@ -3573,6 +3577,10 @@ void rtw_reordering_ctrl_timeout_handler(void *pcontext)
 	//DBG_871X("+rtw_reordering_ctrl_timeout_handler()=>\n");
 
 	_enter_critical_bh(&ppending_recvframe_queue->lock, &irql);
+
+	if (preorder_ctrl) {
+		preorder_ctrl->bReorderWaiting = _FALSE;
+	}
 
 	if(recv_indicatepkts_in_order(padapter, preorder_ctrl, _TRUE)==_TRUE)
 	{

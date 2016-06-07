@@ -2255,14 +2255,20 @@ ODM_ConfigRFWithTxPwrTrackHeaderFile(
 	}
 #endif	
 #if RTL8188E_SUPPORT 	
-	if(pDM_Odm->SupportICType == ODM_RTL8188E)
-	{
+	if (PHY_QueryMacReg(pDM_Odm->Adapter, 0xF0, 0xF000) >= 8) { 	/*if 0xF0[15:12] >= 8, SMIC*/
 		if (pDM_Odm->SupportInterface == ODM_ITRF_PCIE)
-			READ_AND_CONFIG_MP(8188E,_TxPowerTrack_PCIE);
+			READ_AND_CONFIG_MP(8188E, _TxPowerTrack_PCIE_ICUT);
 		else if (pDM_Odm->SupportInterface == ODM_ITRF_USB)
-			READ_AND_CONFIG_MP(8188E,_TxPowerTrack_USB);
+			READ_AND_CONFIG_MP(8188E, _TxPowerTrack_USB_ICUT);
 		else if (pDM_Odm->SupportInterface == ODM_ITRF_SDIO)
-			READ_AND_CONFIG_MP(8188E,_TxPowerTrack_SDIO);
+			READ_AND_CONFIG_MP(8188E, _TxPowerTrack_SDIO_ICUT);
+	} else {	/*else 0xF0[15:12] < 8, TSMC*/
+		if (pDM_Odm->SupportInterface == ODM_ITRF_PCIE)
+			READ_AND_CONFIG_MP(8188E, _TxPowerTrack_PCIE);
+		else if (pDM_Odm->SupportInterface == ODM_ITRF_USB)
+			READ_AND_CONFIG_MP(8188E, _TxPowerTrack_USB);
+		else if (pDM_Odm->SupportInterface == ODM_ITRF_SDIO)
+			READ_AND_CONFIG_MP(8188E, _TxPowerTrack_SDIO);
 	}
 #endif
 #endif//(DM_ODM_SUPPORT_TYPE !=  ODM_AP)

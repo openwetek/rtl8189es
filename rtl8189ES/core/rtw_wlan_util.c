@@ -4003,14 +4003,16 @@ bool rtw_check_pattern_valid(u8 *input, u8 len)
 	int i = 0;
 	bool res = _FALSE;
 	
-	for (i = 0 ; i < len ; i++) {
-		if ((input[i] <= '9' && input[i] >= '0') ||
-		    (input[i] <= 'F' && input[i] >= 'A') ||
-		    (input[i] <= 'f' && input[i] >= 'a'))
-			res = _TRUE;
-		else
-			res = _FALSE;
-	}
+	if (len != 2)
+		goto exit;
+
+	for (i = 0 ; i < len ; i++)
+		if (IsHexDigit(input[i]) == _FALSE)
+			goto exit;
+	
+	res = _SUCCESS;
+	
+exit:
 	return res;
 }
 

@@ -18,7 +18,7 @@
 * 
 ******************************************************************************/
 
-/*Image2HeaderVersion: 2.14*/
+/*Image2HeaderVersion: 2.18*/
 #if (RTL8188E_SUPPORT == 1)
 #ifndef __INC_MP_RF_HW_IMG_8188E_H
 #define __INC_MP_RF_HW_IMG_8188E_H
@@ -55,6 +55,16 @@ ODM_ReadAndConfig_MP_8188E_TxPowerTrack_PCIE(/* TC: Test Chip, MP: MP Chip*/
 u4Byte ODM_GetVersion_MP_8188E_TxPowerTrack_PCIE(void);
 
 /******************************************************************************
+*                           TxPowerTrack_PCIE_ICUT.TXT
+******************************************************************************/
+
+void
+ODM_ReadAndConfig_MP_8188E_TxPowerTrack_PCIE_ICUT(/* TC: Test Chip, MP: MP Chip*/
+	IN   PDM_ODM_T  pDM_Odm
+);
+u4Byte ODM_GetVersion_MP_8188E_TxPowerTrack_PCIE_ICUT(void);
+
+/******************************************************************************
 *                           TxPowerTrack_SDIO.TXT
 ******************************************************************************/
 
@@ -65,6 +75,16 @@ ODM_ReadAndConfig_MP_8188E_TxPowerTrack_SDIO(/* TC: Test Chip, MP: MP Chip*/
 u4Byte ODM_GetVersion_MP_8188E_TxPowerTrack_SDIO(void);
 
 /******************************************************************************
+*                           TxPowerTrack_SDIO_ICUT.TXT
+******************************************************************************/
+
+void
+ODM_ReadAndConfig_MP_8188E_TxPowerTrack_SDIO_ICUT(/* TC: Test Chip, MP: MP Chip*/
+	IN   PDM_ODM_T  pDM_Odm
+);
+u4Byte ODM_GetVersion_MP_8188E_TxPowerTrack_SDIO_ICUT(void);
+
+/******************************************************************************
 *                           TxPowerTrack_USB.TXT
 ******************************************************************************/
 
@@ -73,6 +93,16 @@ ODM_ReadAndConfig_MP_8188E_TxPowerTrack_USB(/* TC: Test Chip, MP: MP Chip*/
 	IN   PDM_ODM_T  pDM_Odm
 );
 u4Byte ODM_GetVersion_MP_8188E_TxPowerTrack_USB(void);
+
+/******************************************************************************
+*                           TxPowerTrack_USB_ICUT.TXT
+******************************************************************************/
+
+void
+ODM_ReadAndConfig_MP_8188E_TxPowerTrack_USB_ICUT(/* TC: Test Chip, MP: MP Chip*/
+	IN   PDM_ODM_T  pDM_Odm
+);
+u4Byte ODM_GetVersion_MP_8188E_TxPowerTrack_USB_ICUT(void);
 
 /******************************************************************************
 *                           TXPWR_LMT.TXT

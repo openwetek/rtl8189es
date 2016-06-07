@@ -3921,10 +3921,15 @@ _func_enter_;
 	}
 
 	if (pwrpriv->wowlan_wake_reason == RX_PNOWakeUp) {
-#ifdef CONFIG_IOCTL_CFG80211	
-		cfg80211_disconnected(padapter->pnetdev, 0, NULL, 0,
-				GFP_ATOMIC);
+#ifdef CONFIG_IOCTL_CFG80211
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 2, 0))
+			u8 locally_generated = 1;
+
+			cfg80211_disconnected(padapter->pnetdev, 0, NULL, 0, locally_generated, GFP_ATOMIC);
+#else
+			cfg80211_disconnected(padapter->pnetdev, 0, NULL, 0, GFP_ATOMIC);
 #endif
+#endif /* CONFIG_IOCTL_CFG80211 */
 		rtw_lock_ext_suspend_timeout(10000);
 	}
 

@@ -50,6 +50,7 @@
 
 #define CONFIG_EMBEDDED_FWIMG
 //#define CONFIG_FILE_FWIMG
+//#define CONFIG_SFW_SUPPORTED
 
 #define CONFIG_XMIT_ACK
 #ifdef CONFIG_XMIT_ACK
@@ -118,8 +119,8 @@
 
 #define CONFIG_SKB_COPY	//for amsdu
 
-//#define CONFIG_LAYER2_ROAMING
-//#define CONFIG_LAYER2_ROAMING_RESUME
+#define CONFIG_LAYER2_ROAMING
+#define CONFIG_LAYER2_ROAMING_RESUME
 
 #define CONFIG_LONG_DELAY_ISSUE
 #define CONFIG_NEW_SIGNAL_STAT_PROCESS
@@ -248,7 +249,7 @@
  */
 #define DBG	1
 
-//#define CONFIG_DEBUG /* DBG_871X, etc... */
+#define CONFIG_DEBUG /* DBG_871X, etc... */
 //#define CONFIG_DEBUG_RTL871X /* RT_TRACE, RT_PRINT_DATA, _func_enter_, _func_exit_ */
 
 #define CONFIG_PROC_DEBUG

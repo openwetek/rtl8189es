@@ -27,7 +27,7 @@
 //#define CONFIG_GTK_OL_DBG
 
 #ifdef CONFIG_LOAD_PHY_PARA_FROM_FILE
-char	file_path[PATH_LENGTH_MAX];
+char	rtw_phy_para_file_path[PATH_LENGTH_MAX];
 #endif
 
 void dump_chip_info(HAL_VERSION	ChipVersion)
@@ -1655,7 +1655,15 @@ static u8 rtw_hal_set_wowlan_ctrl_cmd(_adapter *adapter, u8 enable, u8 change_un
 	SET_H2CCMD_WOWLAN_UNICAST_PKT_ENABLE(u1H2CWoWlanCtrlParm, hw_unicast);
 	SET_H2CCMD_WOWLAN_ALL_PKT_DROP(u1H2CWoWlanCtrlParm, 0);
 	SET_H2CCMD_WOWLAN_GPIO_ACTIVE(u1H2CWoWlanCtrlParm, gpio_high_active);
-#ifndef CONFIG_GTK_OL
+#ifdef CONFIG_GTK_OL
+	if (enable == _TRUE) {
+		/* GTK rekey only for AES, if GTK rekey is TKIP, then wake up*/
+		if (psecpriv->dot118021XGrpPrivacy == _AES_)
+			SET_H2CCMD_WOWLAN_REKEY_WAKE_UP(u1H2CWoWlanCtrlParm, 0);
+		else if (psecpriv->dot118021XGrpPrivacy == _TKIP_)
+			SET_H2CCMD_WOWLAN_REKEY_WAKE_UP(u1H2CWoWlanCtrlParm, 1);
+	}
+#else
 	SET_H2CCMD_WOWLAN_REKEY_WAKE_UP(u1H2CWoWlanCtrlParm, enable);
 #endif
 	SET_H2CCMD_WOWLAN_DISCONNECT_WAKE_UP(u1H2CWoWlanCtrlParm, discont_wake);
@@ -5411,18 +5419,9 @@ void rtw_hal_set_fw_rsvd_page(_adapter* adapter, bool finished)
 #endif /* CONFIG_P2P_WOWLAN */
 
 download_page:
-	DBG_871X("%s: TxDescLen(%d), PageSize(%d)\n",
-		 __func__, TxDescLen, PageSize);
-	DBG_871X("%s: TotalPageNum,: %d, TotalPacketLen: %d\n",
-		 __func__, TotalPageNum, TotalPacketLen);
 
 	if (TotalPacketLen > MaxRsvdPageBufSize) {
 		DBG_871X("%s: [Error] rsvd page size is not enough!!",
-			 __func__);
-		rtw_warn_on(1);
-		goto error;
-	} else if (TotalPageNum * PageSize < TotalPacketLen) {
-		DBG_871X("%s: [Error] total packet len is unexpected\n",
 			 __func__);
 		rtw_warn_on(1);
 		goto error;
@@ -5894,7 +5893,12 @@ void GetHalODMVar(
 		}
 		break;
 #endif
-		
+	case HAL_ODM_INITIAL_GAIN:
+		{
+			pDIG_T pDM_DigTable = &podmpriv->DM_DigTable;
+			*((u8 *)pValue1) = pDM_DigTable->CurIGValue;
+		}
+		break;
 	default:
 		break;
 	}
@@ -7223,12 +7227,11 @@ void rtw_dump_phy_rxcnts_preprocess(_adapter* padapter,u8 rx_cnt_mode)
 {
 	u8 initialgain;
 	HAL_DATA_TYPE *hal_data = GET_HAL_DATA(padapter);
-	DM_ODM_T *odm = &(hal_data->odmpriv);
-	DIG_T	*pDigTable = &odm->DM_DigTable;
 	
 	if((!(padapter->dump_rx_cnt_mode& DUMP_PHY_RX_COUNTER)) && (rx_cnt_mode & DUMP_PHY_RX_COUNTER))
 	{
-		initialgain = pDigTable->CurIGValue;
+		/*initialgain = pDigTable->CurIGValue;*/
+		rtw_hal_get_odm_var(padapter, HAL_ODM_INITIAL_GAIN, &initialgain, NULL);
 		DBG_871X("%s CurIGValue:0x%02x\n",__FUNCTION__,initialgain);
 		rtw_hal_set_odm_var(padapter, HAL_ODM_INITIAL_GAIN, &initialgain, _FALSE);
 		/*disable dynamic functions, such as high power, DIG*/

@@ -1347,16 +1347,21 @@ _func_enter_;
 			}
 		}
 		/* check scan queue exist the same bssid but different ch*/
-		if (check_fwstate(pmlmepriv, WIFI_STATION_STATE &&
-				  check_fwstate(pmlmepriv, _FW_LINKED))){
+		if (check_fwstate(pmlmepriv, WIFI_STATION_STATE) &&
+				  check_fwstate(pmlmepriv, _FW_LINKED)){
 			pnetwork_s = &(pmlmepriv->cur_network);
 			bssid_ex_s = &(pmlmeinfo->network);
 			pnetwork_t =
 				rtw_find_same_network(&pmlmepriv->scanned_queue,
 						      pnetwork_s);
+			if (pnetwork_t == NULL) {
+				DBG_871X("%s: Warning! pnetwork_t=NULL. fw_state=0x%x\n",
+						__func__, get_fwstate(pmlmepriv));
+			}
+
 			bssid_ex_t = &(pnetwork_t->network);
 
-			if (bssid_ex_s != NULL && bssid_ex_t != NULL) {
+			if (pnetwork_t != NULL && bssid_ex_s != NULL && bssid_ex_t != NULL) {
 				cur_ch = bssid_ex_s->Configuration.DSConfig;
 				ch = bssid_ex_t->Configuration.DSConfig;
 				if (cur_ch != ch) {

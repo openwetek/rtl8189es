@@ -910,6 +910,7 @@ void sdio_AggSettingRxUpdate(PADAPTER padapter)
 
 void _initSdioAggregationSetting(PADAPTER padapter)
 {
+#ifdef CONFIG_SDIO_AGG_ENABLE
 	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
 
 	// Tx aggregation setting
@@ -918,6 +919,9 @@ void _initSdioAggregationSetting(PADAPTER padapter)
 	// Rx aggregation setting
 	HalRxAggr8188ESdio(padapter);
 	sdio_AggSettingRxUpdate(padapter);
+#else
+	DBG_871X("%s SDIO Aggregation default off\n", __func__);
+#endif
 
 }
 

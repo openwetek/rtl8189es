@@ -430,6 +430,13 @@ u32 rtw_phydm_ability_ops(_adapter *adapter, HAL_PHYDM_OPS ops, u32 ability);
 #define rtw_phydm_func_disable_all(adapter)	\
 	rtw_phydm_ability_ops(adapter, HAL_PHYDM_DIS_ALL_FUNC, 0)
 
+#define rtw_phydm_func_for_offchannel(adapter) \
+	do { \
+		rtw_phydm_ability_ops(adapter, HAL_PHYDM_DIS_ALL_FUNC, 0); \
+		if (rtw_odm_adaptivity_needed(adapter)) \
+			rtw_phydm_ability_ops(adapter, HAL_PHYDM_FUNC_SET, ODM_BB_ADAPTIVITY); \
+	} while (0)
+
 #define rtw_phydm_func_set(adapter, ability)	\
 	rtw_phydm_ability_ops(adapter, HAL_PHYDM_FUNC_SET, ability)
 
@@ -452,7 +459,7 @@ static inline u32 rtw_phydm_ability_get(_adapter *adapter)
 
 #ifdef CONFIG_LOAD_PHY_PARA_FROM_FILE
 extern char *rtw_phy_file_path;
-extern char file_path[PATH_LENGTH_MAX];
+extern char rtw_phy_para_file_path[PATH_LENGTH_MAX];
 #define GetLineFromBuffer(buffer)   strsep(&buffer, "\n")
 #endif
 

@@ -303,8 +303,10 @@ static void Update_ODM_ComInfo_88E(PADAPTER	Adapter)
 //		| ODM_BB_PWR_TRAIN
 		;
 
-	if (rtw_odm_adaptivity_needed(Adapter) == _TRUE)
+	if (rtw_odm_adaptivity_needed(Adapter) == _TRUE) {
+		rtw_odm_adaptivity_config_msg(RTW_DBGDUMP, Adapter);
 		SupportAbility |= ODM_BB_ADAPTIVITY;
+	}
 
 	if (!Adapter->registrypriv.qos_opt_enable) {
 		SupportAbility |= ODM_MAC_EDCA_TURBO;

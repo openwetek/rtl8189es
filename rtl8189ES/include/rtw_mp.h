@@ -308,7 +308,6 @@ enum {
 	MP_PHYPARA,
 	MP_SetRFPathSwh,
 	MP_QueryDrvStats,
-	MP_SetBT,
 	CTA_TEST,
 	MP_DISABLE_BT_COEXIST,
 	MP_PwrCtlDM,
@@ -318,6 +317,10 @@ enum {
 	EFUSE_FILE,
 	MP_TX,
 	MP_RX,
+	MP_HW_TX_MODE,
+	MP_GET_TXPOWER_INX,
+	MP_NULL,
+	MP_SetBT,
 #ifdef CONFIG_WOWLAN
 	MP_WOW_ENABLE,
 	MP_WOW_SET_PATTERN,
@@ -325,9 +328,6 @@ enum {
 #ifdef CONFIG_AP_WOWLAN
 	MP_AP_WOW_ENABLE,
 #endif
-	MP_NULL,
-	MP_GET_TXPOWER_INX,
-
 	MP_SD_IREAD,
 	MP_SD_IWRITE,
 };
@@ -857,6 +857,8 @@ int rtw_mp_tx(struct net_device *dev,
 int rtw_mp_rx(struct net_device *dev,
 			struct iw_request_info *info,
 			union iwreq_data *wrqu, char *extra);
-
+int rtw_mp_hwtx(struct net_device *dev,
+			struct iw_request_info *info,
+			union iwreq_data *wrqu, char *extra);
 #endif //_RTW_MP_H_
 

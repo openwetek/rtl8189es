@@ -1556,7 +1556,8 @@ PHY_GetTxPowerIndex_8188E(
 
 	track_diff = PHY_GetTxPowerTrackingOffset(pAdapter, RFPath, Rate);
 
-	extra_bias = tx_power_extra_bias(RFPath, Rate, BandWidth, Channel);
+	if (pAdapter->registrypriv.mp_mode != 1)
+		extra_bias = tx_power_extra_bias(RFPath, Rate, BandWidth, Channel);
 
 	txPower = base_index + by_rate_diff + track_diff + extra_bias;
 

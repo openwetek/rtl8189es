@@ -18,7 +18,7 @@
 * 
 ******************************************************************************/
 
-/*Image2HeaderVersion: 2.14*/
+/*Image2HeaderVersion: 2.18*/
 #include "mp_precomp.h"
 #include "../phydm_precomp.h"
 
@@ -122,9 +122,11 @@ CheckNegative(
 u4Byte Array_MP_8188E_MAC_REG[] = { 
 		0x026, 0x00000041,
 		0x027, 0x00000035,
-	0x80000003,	0x00000000,	0x40000000,	0x00000000,
+	0x80000002,	0x00000000,	0x40000000,	0x00000000,
 		0x040, 0x0000000C,
 	0x90000001,	0x00000000,	0x40000000,	0x00000000,
+		0x040, 0x0000000C,
+	0x90000001,	0x00000001,	0x40000000,	0x00000000,
 		0x040, 0x0000000C,
 	0xA0000000,	0x00000000,
 		0x040, 0x00000000,
@@ -250,8 +252,7 @@ ODM_ReadAndConfig_MP_8188E_MAC_REG(
 				} else if (cCond == COND_ELSE) { /*else*/
 					bMatched = bSkipped?FALSE:TRUE;
 					ODM_RT_TRACE(pDM_Odm, ODM_COMP_INIT, ODM_DBG_LOUD, ("ELSE\n"));
-				}
-				else {/*if , else if*/
+				} else {/*if , else if*/
 					pre_v1 = v1;
 					pre_v2 = v2;
 					ODM_RT_TRACE(pDM_Odm, ODM_COMP_INIT, ODM_DBG_LOUD, ("IF or ELSE IF\n"));
@@ -279,7 +280,7 @@ ODM_ReadAndConfig_MP_8188E_MAC_REG(
 u4Byte
 ODM_GetVersion_MP_8188E_MAC_REG(void)
 {
-	   return 63;
+	   return 69;
 }
 
 #endif /* end of HWIMG_SUPPORT*/

@@ -1726,6 +1726,33 @@ int rtw_mp_rx(struct net_device *dev,
 	return 0;
 }
 
+int rtw_mp_hwtx(struct net_device *dev,
+				struct iw_request_info *info,
+				union iwreq_data *wrqu, char *extra)
+{
+	PADAPTER padapter = rtw_netdev_priv(dev);
+	HAL_DATA_TYPE	*pHalData	= GET_HAL_DATA(padapter);
+	struct mp_priv *pmp_priv = &padapter->mppriv;
+	PMPT_CONTEXT		pMptCtx = &(padapter->mppriv.MptCtx);
+
+#if defined(CONFIG_RTL8814A) || defined(CONFIG_RTL8821B) || defined(CONFIG_RTL8822B) || defined(CONFIG_RTL8821C)
+	u8		input[wrqu->data.length];
+
+	if (copy_from_user(input, wrqu->data.pointer, wrqu->data.length))
+			return -EFAULT;
+
+	_rtw_memset(&pMptCtx->PMacTxInfo, 0, sizeof(RT_PMAC_TX_INFO));
+	_rtw_memcpy((void *)&pMptCtx->PMacTxInfo, (void *)input, sizeof(RT_PMAC_TX_INFO));
+
+	mpt_ProSetPMacTx(padapter);
+	sprintf(extra, "Set PMac Tx Mode start\n");
+
+	wrqu->data.length = strlen(extra);
+#endif
+	return 0;
+
+}
+
 
 int rtw_efuse_mask_file(struct net_device *dev,
 						struct iw_request_info *info,

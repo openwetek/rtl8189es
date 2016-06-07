@@ -18,7 +18,7 @@
 * 
 ******************************************************************************/
 
-/*Image2HeaderVersion: 2.14*/
+/*Image2HeaderVersion: 2.18*/
 #if (RTL8188E_SUPPORT == 1)
 #ifndef __INC_MP_BB_HW_IMG_8188E_H
 #define __INC_MP_BB_HW_IMG_8188E_H
